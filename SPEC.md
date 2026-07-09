@@ -8,7 +8,13 @@ Mac-first Electron app (must also run in dev on Windows via `npm start`). User i
 
 ## UI (three panes, clean and Word-like)
 1. **Left sidebar**: chapter list — add, rename, delete (confirm), drag to reorder (order persisted in book.json). Word-count per chapter and book total.
-2. **Center**: TipTap WYSIWYG editor bound to the selected chapter's markdown (user sees formatted text only). Autosave with ~2s debounce. Basic formatting toolbar (headings, bold/italic, blockquote, lists). Serif reading font, comfortable line width.
+2. **Center**: TipTap WYSIWYG editor bound to the selected chapter's markdown (user sees formatted text only). Autosave with ~2s debounce.
+   **Google Docs parity is the explicit UI goal — the user is migrating FROM Google Docs and the transition must feel seamless.** Concretely:
+   - Page look: white "sheet" centered on a neutral gray canvas, subtle shadow, Docs-like margins; document title editable at top.
+   - Full Docs-style toolbar (icon buttons with tooltips, grouped like Docs): undo/redo, font family dropdown (a few good bundled choices incl. an Arial-alike and serif), font size dropdown, bold, italic, underline, strikethrough, **text highlight color** (palette swatch like Docs), text color, headings/styles dropdown ("Normal text", Heading 1-3, Title), alignment (left/center/right/justify), **line spacing dropdown (1.0/1.15/1.5/2.0)**, bullet + numbered lists, indent/outdent, blockquote, clear formatting.
+   - Keyboard shortcuts matching Docs where TipTap allows: Cmd/Ctrl+B/I/U, Cmd+Z/Y, etc.
+   - Persistence note: markdown alone can't hold highlight/font/spacing — store chapters as markdown-first with an HTML fallback layer or extended attrs so no formatting is silently lost on reload. Whatever the mechanism, round-trip fidelity is required: format → autosave → reload → formatting intact. Claude still reads/edits the files as text.
+   - Word count in the bottom-left like Docs.
 3. **Right**: chat panel.
    - Claude messages stream in. Tool activity renders as small status chips ("Editing Chapter 3…"), not raw JSON.
    - A **"Second opinion (Codex)"** button sends the current draft question to Codex; its replies are visually distinct (different accent/avatar) and it NEVER edits files.

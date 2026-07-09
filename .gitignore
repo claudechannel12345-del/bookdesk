@@ -4,3 +4,13 @@ out
 .DS_Store
 .eslintcache
 *.log*
+*.tsbuildinfo
+electron.vite.config.js
+electron.vite.config.d.ts
+src/main/**/*.js
+src/main/**/*.d.ts
+src/preload/**/*.js
+src/renderer/src/**/*.js
+src/renderer/src/**/*.d.ts
+src/shared/**/*.js
+src/shared/**/*.d.ts

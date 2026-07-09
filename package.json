@@ -6,7 +6,7 @@
   "author": "Caden",
   "private": true,
   "scripts": {
-    "start": "electron-vite preview",
+    "start": "electron-vite dev",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "build:unpack": "npm run build && electron-builder --dir",
@@ -19,10 +19,12 @@
     "@tiptap/pm": "^2.9.1",
     "@tiptap/react": "^2.9.1",
     "@tiptap/starter-kit": "^2.9.1",
+    "@types/turndown": "^5.0.6",
     "chokidar": "^3.6.0",
     "diff": "^7.0.0",
     "mammoth": "^1.8.0",
-    "tiptap-markdown": "^0.8.10"
+    "tiptap-markdown": "^0.8.10",
+    "turndown": "^7.2.4"
   },
   "devDependencies": {
     "@electron-toolkit/eslint-config-prettier": "^3.0.0",
