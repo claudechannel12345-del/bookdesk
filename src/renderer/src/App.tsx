@@ -128,7 +128,8 @@ function App(): React.JSX.Element {
       if (event.kind === 'text') {
         setMessages((items) => {
           const last = items[items.length - 1]
-          if (last?.speaker === speaker) return [...items.slice(0, -1), { ...last, text: last.text + event.text }]
+          if (last?.speaker === speaker)
+            return [...items.slice(0, -1), { ...last, text: last.text + event.text }]
           return [...items, { id: id(), speaker, text: event.text }]
         })
         return
@@ -141,7 +142,10 @@ function App(): React.JSX.Element {
       if (event.kind === 'error') {
         if (speaker === 'claude') setClaudeRunning(false)
         appendMessage('system', event.message)
-        if (speaker === 'claude' && /auth|log ?in|not logged|unauthori[sz]ed/i.test(event.message)) {
+        if (
+          speaker === 'claude' &&
+          /auth|log ?in|not logged|unauthori[sz]ed/i.test(event.message)
+        ) {
           setNeedsClaudeSetup(true)
           setSetupMessage('Claude needs a sign-in. Run claude once in Terminal, then try again.')
         }
@@ -297,7 +301,12 @@ function App(): React.JSX.Element {
     if (from < 0 || to < 0) return
     const [moved] = chapters.splice(from, 1)
     chapters.splice(to, 0, moved)
-    setBook(await window.api.chapters.reorder(book.id, chapters.map((chapter) => chapter.id)))
+    setBook(
+      await window.api.chapters.reorder(
+        book.id,
+        chapters.map((chapter) => chapter.id)
+      )
+    )
     setDraggingChapterId(null)
   }
 
@@ -384,14 +393,23 @@ function App(): React.JSX.Element {
     if (!editor) return
     const block = activeBlock()
     const current = Number(editor.getAttributes(block).indent || 0)
-    editor.chain().focus().updateAttributes(block, { indent: Math.max(0, current + delta) }).run()
+    editor
+      .chain()
+      .focus()
+      .updateAttributes(block, { indent: Math.max(0, current + delta) })
+      .run()
   }
 
   function setStyle(value: string): void {
     if (!editor) return
     if (value === 'normal') editor.chain().focus().setParagraph().run()
     else if (value === 'title') editor.chain().focus().setNode('heading', { level: 1 }).run()
-    else editor.chain().focus().setNode('heading', { level: Number(value.slice(-1)) as 1 | 2 | 3 }).run()
+    else
+      editor
+        .chain()
+        .focus()
+        .setNode('heading', { level: Number(value.slice(-1)) as 1 | 2 | 3 })
+        .run()
   }
 
   if (!claudeDetect.found || needsClaudeSetup) {
@@ -405,9 +423,13 @@ function App(): React.JSX.Element {
               : 'BookDesk needs the Claude CLI before it can edit your book.'}
           </p>
           <pre>npm install -g @anthropic-ai/claude-code</pre>
-          <p>Then run <code>claude</code> once in Terminal and sign in.</p>
+          <p>
+            Then run <code>claude</code> once in Terminal and sign in.
+          </p>
           <div className="setup-actions">
-            <button onClick={() => void window.api.detect.claude().then(setClaudeDetect)}>Check again</button>
+            <button onClick={() => void window.api.detect.claude().then(setClaudeDetect)}>
+              Check again
+            </button>
             <button onClick={() => void testClaude()}>Test connection</button>
           </div>
           {setupMessage && <p className="setup-message">{setupMessage}</p>}
@@ -425,89 +447,428 @@ function App(): React.JSX.Element {
         </div>
         <div className="book-picker">
           <select value={book?.id ?? ''} onChange={(event) => void openBook(event.target.value)}>
-            <option value="" disabled>Open a book</option>
-            {books.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
+            <option value="" disabled>
+              Open a book
+            </option>
+            {books.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.title}
+              </option>
+            ))}
           </select>
           <div className="new-book">
-            <input value={newBookTitle} onChange={(event) => setNewBookTitle(event.target.value)} aria-label="New book title" />
+            <input
+              value={newBookTitle}
+              onChange={(event) => setNewBookTitle(event.target.value)}
+              aria-label="New book title"
+            />
             <button onClick={() => void createBook()}>New</button>
           </div>
         </div>
-        {book && <>
-          <div className="sidebar-row"><h2>Chapters</h2><button onClick={() => void addChapter()}>Add</button></div>
-          <ol className="chapter-list">
-            {book.chapters.map((chapter, index) => (
-              <li key={chapter.id} draggable onDragStart={() => setDraggingChapterId(chapter.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => void moveChapter(chapter.id)} className={chapter.id === selectedChapterId ? 'active' : ''}>
-                <button className="chapter-main" onClick={() => void chooseChapter(chapter.id)}><span>{chapterLabel(index, chapter.title)}</span><small>{(chapterWords[chapter.id] ?? 0).toLocaleString()} words</small></button>
-                <button title="Rename chapter" onClick={() => void renameChapter(chapter.id)}>Rename</button>
-                <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>Delete</button>
-              </li>
-            ))}
-          </ol>
-          <button className="rules-button" onClick={() => void openRules()}>Writing Rules</button>
-        </>}
+        {book && (
+          <>
+            <div className="sidebar-row">
+              <h2>Chapters</h2>
+              <button onClick={() => void addChapter()}>Add</button>
+            </div>
+            <ol className="chapter-list">
+              {book.chapters.map((chapter, index) => (
+                <li
+                  key={chapter.id}
+                  draggable
+                  onDragStart={() => setDraggingChapterId(chapter.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => void moveChapter(chapter.id)}
+                  className={chapter.id === selectedChapterId ? 'active' : ''}
+                >
+                  <button className="chapter-main" onClick={() => void chooseChapter(chapter.id)}>
+                    <span>{chapterLabel(index, chapter.title)}</span>
+                    <small>{(chapterWords[chapter.id] ?? 0).toLocaleString()} words</small>
+                  </button>
+                  <button title="Rename chapter" onClick={() => void renameChapter(chapter.id)}>
+                    Rename
+                  </button>
+                  <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>
+                    Delete
+                  </button>
+                </li>
+              ))}
+            </ol>
+            <button className="rules-button" onClick={() => void openRules()}>
+              Writing Rules
+            </button>
+          </>
+        )}
       </aside>
 
       <section className="editor-pane">
-        {book && selectedChapter ? <>
-          <header className="editor-header">
-            <input className="document-title" value={book.title} onChange={(event) => setBook({ ...book, title: event.target.value })} onBlur={() => void saveBookTitle()} aria-label="Document title" />
-            <span>{selectedChapter.title}</span>
-          </header>
-          <div className="docs-toolbar" aria-label="Document formatting toolbar">
-            <div className="toolbar-group">
-              <button title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" onClick={() => editor?.chain().focus().undo().run()}>↶</button>
-              <button title="Redo (Ctrl/Cmd+Y)" aria-label="Redo" onClick={() => editor?.chain().focus().redo().run()}>↷</button>
+        {book && selectedChapter ? (
+          <>
+            <header className="editor-header">
+              <input
+                className="document-title"
+                value={book.title}
+                onChange={(event) => setBook({ ...book, title: event.target.value })}
+                onBlur={() => void saveBookTitle()}
+                aria-label="Document title"
+              />
+              <span>{selectedChapter.title}</span>
+            </header>
+            <div className="docs-toolbar" aria-label="Document formatting toolbar">
+              <div className="toolbar-group">
+                <button
+                  title="Undo (Ctrl/Cmd+Z)"
+                  aria-label="Undo"
+                  onClick={() => editor?.chain().focus().undo().run()}
+                >
+                  ↶
+                </button>
+                <button
+                  title="Redo (Ctrl/Cmd+Y)"
+                  aria-label="Redo"
+                  onClick={() => editor?.chain().focus().redo().run()}
+                >
+                  ↷
+                </button>
+              </div>
+              <div className="toolbar-group toolbar-selects">
+                <select
+                  title="Text style"
+                  aria-label="Text style"
+                  defaultValue=""
+                  onChange={(event) => {
+                    if (event.target.value) setStyle(event.target.value)
+                    event.target.value = ''
+                  }}
+                >
+                  <option value="" disabled>
+                    Normal text
+                  </option>
+                  <option value="normal">Normal text</option>
+                  <option value="title">Title</option>
+                  <option value="heading-1">Heading 1</option>
+                  <option value="heading-2">Heading 2</option>
+                  <option value="heading-3">Heading 3</option>
+                </select>
+                <select
+                  title="Font"
+                  aria-label="Font family"
+                  defaultValue=""
+                  onChange={(event) =>
+                    editor?.chain().focus().setFontFamily(event.target.value).run()
+                  }
+                >
+                  <option value="" disabled>
+                    Font
+                  </option>
+                  {FONT_FAMILIES.map(([label, value]) => (
+                    <option key={label} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  title="Font size"
+                  aria-label="Font size"
+                  defaultValue=""
+                  onChange={(event) =>
+                    editor
+                      ?.chain()
+                      .focus()
+                      .setMark('textStyle', { fontSize: event.target.value })
+                      .run()
+                  }
+                >
+                  <option value="" disabled>
+                    Size
+                  </option>
+                  {[10, 11, 12, 14, 16, 18, 24, 32].map((size) => (
+                    <option key={size} value={`${size}pt`}>
+                      {size}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="toolbar-group">
+                <button
+                  title="Bold (Ctrl/Cmd+B)"
+                  aria-label="Bold"
+                  className={editor?.isActive('bold') ? 'is-active' : ''}
+                  onClick={() => editor?.chain().focus().toggleBold().run()}
+                >
+                  <b>B</b>
+                </button>
+                <button
+                  title="Italic (Ctrl/Cmd+I)"
+                  aria-label="Italic"
+                  className={editor?.isActive('italic') ? 'is-active' : ''}
+                  onClick={() => editor?.chain().focus().toggleItalic().run()}
+                >
+                  <i>I</i>
+                </button>
+                <button
+                  title="Underline (Ctrl/Cmd+U)"
+                  aria-label="Underline"
+                  className={editor?.isActive('underline') ? 'is-active' : ''}
+                  onClick={() => editor?.chain().focus().toggleUnderline().run()}
+                >
+                  <u>U</u>
+                </button>
+                <button
+                  title="Strikethrough"
+                  aria-label="Strikethrough"
+                  className={editor?.isActive('strike') ? 'is-active' : ''}
+                  onClick={() => editor?.chain().focus().toggleStrike().run()}
+                >
+                  <s>S</s>
+                </button>
+              </div>
+              <div className="toolbar-group color-tools">
+                <details>
+                  <summary title="Text color" aria-label="Text color">
+                    A<span className="color-bar text-color" />
+                  </summary>
+                  <div className="color-palette">
+                    {TEXT_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        title={color}
+                        aria-label={`Text color ${color}`}
+                        className="color-swatch"
+                        style={{ background: color }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => editor?.chain().focus().setColor(color).run()}
+                      />
+                    ))}
+                  </div>
+                </details>
+                <details>
+                  <summary title="Highlight color" aria-label="Highlight color">
+                    ▰<span className="color-bar highlight-color" />
+                  </summary>
+                  <div className="color-palette">
+                    {HIGHLIGHT_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        title={color}
+                        aria-label={`Highlight ${color}`}
+                        className="color-swatch"
+                        style={{ background: color }}
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => editor?.chain().focus().toggleHighlight({ color }).run()}
+                      />
+                    ))}
+                  </div>
+                </details>
+              </div>
+              <div className="toolbar-group toolbar-selects">
+                <select
+                  title="Alignment"
+                  aria-label="Alignment"
+                  defaultValue="left"
+                  onChange={(event) =>
+                    editor?.chain().focus().setTextAlign(event.target.value).run()
+                  }
+                >
+                  <option value="left">⇤</option>
+                  <option value="center">≡</option>
+                  <option value="right">⇥</option>
+                  <option value="justify">☰</option>
+                </select>
+                <select
+                  title="Line spacing"
+                  aria-label="Line spacing"
+                  defaultValue=""
+                  onChange={(event) => setLineSpacing(event.target.value)}
+                >
+                  <option value="" disabled>
+                    Spacing
+                  </option>
+                  {['1.0', '1.15', '1.5', '2.0'].map((spacing) => (
+                    <option key={spacing} value={spacing}>
+                      {spacing}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="toolbar-group">
+                <button
+                  title="Bullet list"
+                  aria-label="Bullet list"
+                  onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                >
+                  •≡
+                </button>
+                <button
+                  title="Numbered list"
+                  aria-label="Numbered list"
+                  onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+                >
+                  1≡
+                </button>
+                <button
+                  title="Decrease indent"
+                  aria-label="Decrease indent"
+                  onClick={() => changeIndent(-1)}
+                >
+                  ⇤
+                </button>
+                <button
+                  title="Increase indent"
+                  aria-label="Increase indent"
+                  onClick={() => changeIndent(1)}
+                >
+                  ⇥
+                </button>
+                <button
+                  title="Blockquote"
+                  aria-label="Blockquote"
+                  onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+                >
+                  ❝
+                </button>
+                <button
+                  title="Clear formatting"
+                  aria-label="Clear formatting"
+                  onClick={() =>
+                    editor?.chain().focus().unsetAllMarks().clearNodes().setTextAlign('left').run()
+                  }
+                >
+                  Tx
+                </button>
+              </div>
             </div>
-            <div className="toolbar-group toolbar-selects">
-              <select title="Text style" aria-label="Text style" defaultValue="" onChange={(event) => { if (event.target.value) setStyle(event.target.value); event.target.value = '' }}>
-                <option value="" disabled>Normal text</option><option value="normal">Normal text</option><option value="title">Title</option><option value="heading-1">Heading 1</option><option value="heading-2">Heading 2</option><option value="heading-3">Heading 3</option>
-              </select>
-              <select title="Font" aria-label="Font family" defaultValue="" onChange={(event) => editor?.chain().focus().setFontFamily(event.target.value).run()}>
-                <option value="" disabled>Font</option>{FONT_FAMILIES.map(([label, value]) => <option key={label} value={value}>{label}</option>)}
-              </select>
-              <select title="Font size" aria-label="Font size" defaultValue="" onChange={(event) => editor?.chain().focus().setMark('textStyle', { fontSize: event.target.value }).run()}>
-                <option value="" disabled>Size</option>{[10, 11, 12, 14, 16, 18, 24, 32].map((size) => <option key={size} value={`${size}pt`}>{size}</option>)}
-              </select>
+            {conflictText && (
+              <div className="conflict-banner">
+                <span>Claude edited this chapter.</span>
+                <button
+                  onClick={() => {
+                    loadingRef.current = true
+                    editor?.commands.setContent(conflictText, false)
+                    loadingRef.current = false
+                    dirtyRef.current = false
+                    setConflictText(null)
+                  }}
+                >
+                  Reload
+                </button>
+                <button onClick={() => setConflictText(null)}>Keep mine</button>
+              </div>
+            )}
+            {reviews.length > 0 && (
+              <div className="review-strip">
+                {reviews.map((entry) => (
+                  <div key={entry.chapterId} className="review-item">
+                    <span>
+                      Claude changed {entry.chapterTitle} (+{entry.addedWords} / -
+                      {entry.removedWords} words)
+                    </span>
+                    <button onClick={() => void showDiff(entry)}>View changes</button>
+                    <button onClick={() => void undoReview(entry)}>Undo</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="editor-wrap">
+              <EditorContent editor={editor} />
             </div>
-            <div className="toolbar-group">
-              <button title="Bold (Ctrl/Cmd+B)" aria-label="Bold" className={editor?.isActive('bold') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleBold().run()}><b>B</b></button>
-              <button title="Italic (Ctrl/Cmd+I)" aria-label="Italic" className={editor?.isActive('italic') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleItalic().run()}><i>I</i></button>
-              <button title="Underline (Ctrl/Cmd+U)" aria-label="Underline" className={editor?.isActive('underline') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleUnderline().run()}><u>U</u></button>
-              <button title="Strikethrough" aria-label="Strikethrough" className={editor?.isActive('strike') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleStrike().run()}><s>S</s></button>
-            </div>
-            <div className="toolbar-group color-tools">
-              <details><summary title="Text color" aria-label="Text color">A<span className="color-bar text-color" /></summary><div className="color-palette">{TEXT_COLORS.map((color) => <button key={color} title={color} aria-label={`Text color ${color}`} className="color-swatch" style={{ background: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => editor?.chain().focus().setColor(color).run()} />)}</div></details>
-              <details><summary title="Highlight color" aria-label="Highlight color">▰<span className="color-bar highlight-color" /></summary><div className="color-palette">{HIGHLIGHT_COLORS.map((color) => <button key={color} title={color} aria-label={`Highlight ${color}`} className="color-swatch" style={{ background: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => editor?.chain().focus().toggleHighlight({ color }).run()} />)}</div></details>
-            </div>
-            <div className="toolbar-group toolbar-selects">
-              <select title="Alignment" aria-label="Alignment" defaultValue="left" onChange={(event) => editor?.chain().focus().setTextAlign(event.target.value).run()}><option value="left">⇤</option><option value="center">≡</option><option value="right">⇥</option><option value="justify">☰</option></select>
-              <select title="Line spacing" aria-label="Line spacing" defaultValue="" onChange={(event) => setLineSpacing(event.target.value)}><option value="" disabled>Spacing</option>{['1.0', '1.15', '1.5', '2.0'].map((spacing) => <option key={spacing} value={spacing}>{spacing}</option>)}</select>
-            </div>
-            <div className="toolbar-group">
-              <button title="Bullet list" aria-label="Bullet list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>•≡</button>
-              <button title="Numbered list" aria-label="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1≡</button>
-              <button title="Decrease indent" aria-label="Decrease indent" onClick={() => changeIndent(-1)}>⇤</button>
-              <button title="Increase indent" aria-label="Increase indent" onClick={() => changeIndent(1)}>⇥</button>
-              <button title="Blockquote" aria-label="Blockquote" onClick={() => editor?.chain().focus().toggleBlockquote().run()}>❝</button>
-              <button title="Clear formatting" aria-label="Clear formatting" onClick={() => editor?.chain().focus().unsetAllMarks().clearNodes().setTextAlign('left').run()}>Tx</button>
-            </div>
+            <footer className="editor-footer">
+              {(chapterWords[selectedChapter.id] ?? 0).toLocaleString()} words
+            </footer>
+          </>
+        ) : (
+          <div className="empty-state">
+            <h2>Start with a book</h2>
+            <p>Create a book or open one from the list.</p>
           </div>
-          {conflictText && <div className="conflict-banner"><span>Claude edited this chapter.</span><button onClick={() => { loadingRef.current = true; editor?.commands.setContent(conflictText, false); loadingRef.current = false; dirtyRef.current = false; setConflictText(null) }}>Reload</button><button onClick={() => setConflictText(null)}>Keep mine</button></div>}
-          {reviews.length > 0 && <div className="review-strip">{reviews.map((entry) => <div key={entry.chapterId} className="review-item"><span>Claude changed {entry.chapterTitle} (+{entry.addedWords} / -{entry.removedWords} words)</span><button onClick={() => void showDiff(entry)}>View changes</button><button onClick={() => void undoReview(entry)}>Undo</button></div>)}</div>}
-          <div className="editor-wrap"><EditorContent editor={editor} /></div>
-          <footer className="editor-footer">{(chapterWords[selectedChapter.id] ?? 0).toLocaleString()} words</footer>
-        </> : <div className="empty-state"><h2>Start with a book</h2><p>Create a book or open one from the list.</p></div>}
+        )}
       </section>
 
       <aside className="chat-pane">
-        <header><div><h2>Co-author</h2><p>{claudeDetect.version ?? 'Claude connected'}</p></div>{book && <select value={book.model} onChange={(event) => void changeModel(event.target.value)}>{CLAUDE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}</select>}</header>
-        <div className="messages">{messages.map((message) => <div key={message.id} className={`message ${message.speaker}`}>{message.speaker === 'claude-tool' ? <span>{message.text}</span> : <>{(message.speaker === 'claude' || message.speaker === 'codex') && <span className="message-avatar" aria-hidden="true">{message.speaker === 'claude' ? 'C' : 'X'}</span>}<span>{message.text}</span></>}</div>)}</div>
-        <footer><textarea value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Ask Claude to revise, expand, or critique this chapter." /><div className="chat-actions"><button disabled={!book || claudeRunning || !chatText.trim()} onClick={() => void sendClaude()}>{claudeRunning ? 'Claude is writing...' : 'Send to Claude'}</button><button disabled={!book || !chatText.trim()} onClick={() => void sendCodex()}>Second opinion (Codex)</button></div></footer>
+        <header>
+          <div>
+            <h2>Co-author</h2>
+            <p>{claudeDetect.version ?? 'Claude connected'}</p>
+          </div>
+          {book && (
+            <select value={book.model} onChange={(event) => void changeModel(event.target.value)}>
+              {CLAUDE_MODELS.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          )}
+        </header>
+        <div className="messages">
+          {messages.map((message) => (
+            <div key={message.id} className={`message ${message.speaker}`}>
+              {message.speaker === 'claude-tool' ? (
+                <span>{message.text}</span>
+              ) : (
+                <>
+                  {(message.speaker === 'claude' || message.speaker === 'codex') && (
+                    <span className="message-avatar" aria-hidden="true">
+                      {message.speaker === 'claude' ? 'C' : 'X'}
+                    </span>
+                  )}
+                  <span>{message.text}</span>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+        <footer>
+          <textarea
+            value={chatText}
+            onChange={(event) => setChatText(event.target.value)}
+            placeholder="Ask Claude to revise, expand, or critique this chapter."
+          />
+          <div className="chat-actions">
+            <button
+              disabled={!book || claudeRunning || !chatText.trim()}
+              onClick={() => void sendClaude()}
+            >
+              {claudeRunning ? 'Claude is writing...' : 'Send to Claude'}
+            </button>
+            <button disabled={!book || !chatText.trim()} onClick={() => void sendCodex()}>
+              Second opinion (Codex)
+            </button>
+          </div>
+        </footer>
       </aside>
 
-      {rulesOpen && <div className="modal-backdrop"><section className="modal rules-modal"><header><h2>Writing Rules</h2><button onClick={() => setRulesOpen(false)}>Close</button></header><textarea value={rulesText} onChange={(event) => setRulesText(event.target.value)} /><footer><button onClick={() => void saveRules()}>Save rules</button></footer></section></div>}
-      {diff && <div className="modal-backdrop"><section className="modal diff-modal"><header><h2>{diff.chapterTitle}</h2><button onClick={() => setDiff(null)}>Close</button></header><div className="diff-body">{diff.parts.map((part, index) => <span key={index} className={part.added ? 'added' : part.removed ? 'removed' : ''}>{part.value}</span>)}</div></section></div>}
+      {rulesOpen && (
+        <div className="modal-backdrop">
+          <section className="modal rules-modal">
+            <header>
+              <h2>Writing Rules</h2>
+              <button onClick={() => setRulesOpen(false)}>Close</button>
+            </header>
+            <textarea value={rulesText} onChange={(event) => setRulesText(event.target.value)} />
+            <footer>
+              <button onClick={() => void saveRules()}>Save rules</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {diff && (
+        <div className="modal-backdrop">
+          <section className="modal diff-modal">
+            <header>
+              <h2>{diff.chapterTitle}</h2>
+              <button onClick={() => setDiff(null)}>Close</button>
+            </header>
+            <div className="diff-body">
+              {diff.parts.map((part, index) => (
+                <span key={index} className={part.added ? 'added' : part.removed ? 'removed' : ''}>
+                  {part.value}
+                </span>
+              ))}
+            </div>
+          </section>
+        </div>
+      )}
     </main>
   )
 }
