@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   BookMeta,
   BookSummary,
+  ChapterContent,
   DetectResult,
   DiffResult,
   ReviewEntry,
@@ -20,6 +21,8 @@ const api = {
   books: {
     list: (): Promise<BookSummary[]> => ipcRenderer.invoke('books:list'),
     create: (title: string): Promise<BookMeta> => ipcRenderer.invoke('books:create', title),
+    rename: (bookId: string, title: string): Promise<BookMeta> =>
+      ipcRenderer.invoke('books:rename', bookId, title),
     open: (bookId: string): Promise<BookMeta> => ipcRenderer.invoke('books:open', bookId),
     setActive: (bookId: string | null): Promise<void> =>
       ipcRenderer.invoke('books:setActive', bookId)
@@ -35,8 +38,17 @@ const api = {
       ipcRenderer.invoke('chapters:reorder', bookId, orderedIds),
     read: (bookId: string, chapterId: string): Promise<string> =>
       ipcRenderer.invoke('chapters:read', bookId, chapterId),
+    readContent: (bookId: string, chapterId: string): Promise<ChapterContent> =>
+      ipcRenderer.invoke('chapters:readContent', bookId, chapterId),
     write: (bookId: string, chapterId: string, markdown: string): Promise<void> =>
-      ipcRenderer.invoke('chapters:write', bookId, chapterId, markdown)
+      ipcRenderer.invoke('chapters:write', bookId, chapterId, markdown),
+    writeContent: (
+      bookId: string,
+      chapterId: string,
+      markdown: string,
+      document: Record<string, unknown>
+    ): Promise<void> =>
+      ipcRenderer.invoke('chapters:writeContent', bookId, chapterId, markdown, document)
   },
   writingRules: {
     read: (bookId: string): Promise<string> => ipcRenderer.invoke('writingRules:read', bookId),

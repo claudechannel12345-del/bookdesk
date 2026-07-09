@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { EditorContent, useEditor } from '@tiptap/react'
+import { type Editor, type JSONContent } from '@tiptap/core'
 import StarterKit from '@tiptap/starter-kit'
+import Color from '@tiptap/extension-color'
+import FontFamily from '@tiptap/extension-font-family'
+import Highlight from '@tiptap/extension-highlight'
 import Link from '@tiptap/extension-link'
+import TextAlign from '@tiptap/extension-text-align'
+import TextStyle from '@tiptap/extension-text-style'
+import Underline from '@tiptap/extension-underline'
 import { Markdown } from 'tiptap-markdown'
+import { DocumentLayout } from './editorExtensions'
 import type {
   AgentEvent,
   BookMeta,
@@ -16,6 +24,16 @@ import { CLAUDE_MODELS } from '../../shared/types'
 
 const emptyDetect: DetectResult = { found: false }
 
+const FONT_OPTIONS = [
+  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Palatino', value: 'Palatino Linotype, Book Antiqua, serif' },
+  { label: 'Courier New', value: 'Courier New, monospace' }
+]
+const FONT_SIZES = ['11', '12', '14', '16', '18', '24', '32']
+const COLORS = ['#202124', '#b3261e', '#e37400', '#188038', '#1a73e8', '#7627bb']
+const HIGHLIGHTS = ['#fff475', '#fbbc04', '#ccff90', '#a7ffeb', '#cbf0f8', '#d7aefb']
+
 function id(): string {
   return Math.random().toString(36).slice(2)
 }
@@ -26,6 +44,17 @@ function wordCount(text: string): number {
 
 function chapterLabel(index: number, title: string): string {
   return `${index + 1}. ${title}`
+}
+
+function markdownOf(editor: NonNullable<ReturnType<typeof useEditor>>): string {
+  return (editor.storage.markdown as { getMarkdown: () => string }).getMarkdown()
+}
+
+function loadRichDocument(editor: Editor, document: Record<string, unknown>): void {
+  const richDocument = editor.schema.nodeFromJSON(document as JSONContent)
+  editor.view.dispatch(
+    editor.state.tr.replaceWith(0, editor.state.doc.content.size, richDocument.content)
+  )
 }
 
 function App(): React.JSX.Element {
@@ -47,6 +76,7 @@ function App(): React.JSX.Element {
   const [setupMessage, setSetupMessage] = useState('')
   const [needsClaudeSetup, setNeedsClaudeSetup] = useState(false)
   const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null)
+  const [openPalette, setOpenPalette] = useState<'text' | 'highlight' | null>(null)
 
   const bookIdRef = useRef<string | null>(null)
   const selectedChapterIdRef = useRef<string | null>(null)
@@ -58,6 +88,13 @@ function App(): React.JSX.Element {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      TextStyle,
+      Color.configure({ types: ['textStyle'] }),
+      FontFamily.configure({ types: ['textStyle'] }),
+      Highlight.configure({ multicolor: true }),
+      Underline,
+      TextAlign.configure({ types: ['heading', 'paragraph'] }),
+      DocumentLayout,
       Link.configure({ openOnClick: false }),
       Markdown.configure({ html: false })
     ],
@@ -70,9 +107,9 @@ function App(): React.JSX.Element {
     onUpdate: ({ editor }) => {
       if (loadingRef.current) return
       dirtyRef.current = true
-      const markdown = (editor.storage.markdown as { getMarkdown: () => string }).getMarkdown()
       const chapterId = selectedChapterIdRef.current
-      if (chapterId) setChapterWords((words) => ({ ...words, [chapterId]: wordCount(markdown) }))
+      if (chapterId)
+        setChapterWords((words) => ({ ...words, [chapterId]: wordCount(editor.getText()) }))
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
       saveTimerRef.current = window.setTimeout(() => {
         void saveNowRef.current()
@@ -154,8 +191,13 @@ function App(): React.JSX.Element {
 
   const saveNow = useCallback(async () => {
     if (!editor || !bookIdRef.current || !selectedChapterIdRef.current || !dirtyRef.current) return
-    const markdown = (editor.storage.markdown as { getMarkdown: () => string }).getMarkdown()
-    await window.api.chapters.write(bookIdRef.current, selectedChapterIdRef.current, markdown)
+    const markdown = markdownOf(editor)
+    await window.api.chapters.writeContent(
+      bookIdRef.current,
+      selectedChapterIdRef.current,
+      markdown,
+      editor.getJSON() as unknown as Record<string, unknown>
+    )
     dirtyRef.current = false
   }, [editor])
 
@@ -169,12 +211,13 @@ function App(): React.JSX.Element {
       setSelectedChapterId(chapterId)
       setConflictText(null)
       if (!editor || !bookIdRef.current || !chapterId) return
-      const markdown = await window.api.chapters.read(bookIdRef.current, chapterId)
+      const content = await window.api.chapters.readContent(bookIdRef.current, chapterId)
       loadingRef.current = true
-      editor.commands.setContent(markdown, false)
+      if (content.document) loadRichDocument(editor, content.document)
+      else editor.commands.setContent(content.markdown, false)
       loadingRef.current = false
       dirtyRef.current = false
-      setChapterWords((words) => ({ ...words, [chapterId]: wordCount(markdown) }))
+      setChapterWords((words) => ({ ...words, [chapterId]: wordCount(editor.getText()) }))
     },
     [editor]
   )
@@ -223,6 +266,34 @@ function App(): React.JSX.Element {
       offBookReload()
     }
   }, [appendAgentEvent, editor, openBook])
+
+  function updateBlockStyle(attributes: Record<string, unknown>): void {
+    if (!editor) return
+    const type = editor.isActive('heading')
+      ? 'heading'
+      : editor.isActive('blockquote')
+        ? 'blockquote'
+        : 'paragraph'
+    editor.chain().focus().updateAttributes(type, attributes).run()
+  }
+
+  function changeIndent(amount: number): void {
+    if (!editor) return
+    const type = editor.isActive('heading')
+      ? 'heading'
+      : editor.isActive('blockquote')
+        ? 'blockquote'
+        : 'paragraph'
+    const current = Number(editor.getAttributes(type).indent ?? 0)
+    updateBlockStyle({ indent: Math.max(0, current + amount) })
+  }
+
+  async function saveBookTitle(): Promise<void> {
+    if (!book) return
+    const nextBook = await window.api.books.rename(book.id, book.title)
+    setBook(nextBook)
+    await refreshBooks()
+  }
 
   async function createBook(): Promise<void> {
     const title = newBookTitle.trim() || 'Untitled Book'
@@ -442,28 +513,278 @@ function App(): React.JSX.Element {
         {book && selectedChapter ? (
           <>
             <header className="editor-header">
-              <div>
-                <p>{book.title}</p>
-                <h2>{selectedChapter.title}</h2>
+              <div className="document-title-row">
+                <input
+                  className="document-title"
+                  aria-label="Document title"
+                  value={book.title}
+                  onChange={(event) => setBook({ ...book, title: event.target.value })}
+                  onBlur={() => void saveBookTitle()}
+                />
+                <span>{selectedChapter.title}</span>
               </div>
-              <div className="toolbar">
-                <button onClick={() => editor?.chain().focus().toggleHeading({ level: 1 }).run()}>
-                  H1
-                </button>
-                <button onClick={() => editor?.chain().focus().toggleHeading({ level: 2 }).run()}>
-                  H2
-                </button>
-                <button onClick={() => editor?.chain().focus().toggleBold().run()}>B</button>
-                <button onClick={() => editor?.chain().focus().toggleItalic().run()}>I</button>
-                <button onClick={() => editor?.chain().focus().toggleBlockquote().run()}>
-                  Quote
-                </button>
-                <button onClick={() => editor?.chain().focus().toggleBulletList().run()}>
-                  Bullets
-                </button>
-                <button onClick={() => editor?.chain().focus().toggleOrderedList().run()}>
-                  List
-                </button>
+              <div className="toolbar" role="toolbar" aria-label="Document formatting">
+                <div className="toolbar-group">
+                  <button
+                    className="toolbar-button"
+                    title="Undo"
+                    aria-label="Undo"
+                    onClick={() => editor?.chain().focus().undo().run()}
+                  >
+                    ↶
+                  </button>
+                  <button
+                    className="toolbar-button"
+                    title="Redo"
+                    aria-label="Redo"
+                    onClick={() => editor?.chain().focus().redo().run()}
+                  >
+                    ↷
+                  </button>
+                </div>
+                <div className="toolbar-group toolbar-selects">
+                  <select
+                    aria-label="Text style"
+                    defaultValue="normal"
+                    onChange={(event) => {
+                      const value = event.target.value
+                      if (value === 'normal') editor?.chain().focus().setParagraph().run()
+                      else if (value === 'title')
+                        editor?.chain().focus().setHeading({ level: 1 }).run()
+                      else
+                        editor
+                          ?.chain()
+                          .focus()
+                          .setHeading({ level: Number(value) as 1 | 2 | 3 })
+                          .run()
+                    }}
+                  >
+                    <option value="normal">Normal text</option>
+                    <option value="title">Title</option>
+                    <option value="1">Heading 1</option>
+                    <option value="2">Heading 2</option>
+                    <option value="3">Heading 3</option>
+                  </select>
+                  <select
+                    aria-label="Font family"
+                    defaultValue={FONT_OPTIONS[0].value}
+                    onChange={(event) =>
+                      editor?.chain().focus().setFontFamily(event.target.value).run()
+                    }
+                  >
+                    {FONT_OPTIONS.map((font) => (
+                      <option key={font.label} value={font.value}>
+                        {font.label}
+                      </option>
+                    ))}
+                  </select>
+                  <select
+                    aria-label="Font size"
+                    defaultValue="16"
+                    onChange={(event) =>
+                      editor
+                        ?.chain()
+                        .focus()
+                        .setMark('textStyle', { fontSize: `${event.target.value}px` })
+                        .run()
+                    }
+                  >
+                    {FONT_SIZES.map((size) => (
+                      <option key={size} value={size}>
+                        {size}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="toolbar-group">
+                  <button
+                    className={
+                      editor?.isActive('bold') ? 'toolbar-button active' : 'toolbar-button'
+                    }
+                    title="Bold (Ctrl/Cmd+B)"
+                    aria-label="Bold"
+                    onClick={() => editor?.chain().focus().toggleBold().run()}
+                  >
+                    B
+                  </button>
+                  <button
+                    className={
+                      editor?.isActive('italic')
+                        ? 'toolbar-button active italic'
+                        : 'toolbar-button italic'
+                    }
+                    title="Italic (Ctrl/Cmd+I)"
+                    aria-label="Italic"
+                    onClick={() => editor?.chain().focus().toggleItalic().run()}
+                  >
+                    I
+                  </button>
+                  <button
+                    className={
+                      editor?.isActive('underline')
+                        ? 'toolbar-button active underlined'
+                        : 'toolbar-button underlined'
+                    }
+                    title="Underline (Ctrl/Cmd+U)"
+                    aria-label="Underline"
+                    onClick={() => editor?.chain().focus().toggleUnderline().run()}
+                  >
+                    U
+                  </button>
+                  <button
+                    className={
+                      editor?.isActive('strike')
+                        ? 'toolbar-button active struck'
+                        : 'toolbar-button struck'
+                    }
+                    title="Strikethrough"
+                    aria-label="Strikethrough"
+                    onClick={() => editor?.chain().focus().toggleStrike().run()}
+                  >
+                    S
+                  </button>
+                  <div className="toolbar-menu">
+                    <button
+                      className="toolbar-button color-button"
+                      title="Text color"
+                      aria-label="Text color"
+                      onClick={() => setOpenPalette(openPalette === 'text' ? null : 'text')}
+                    >
+                      A
+                    </button>
+                    {openPalette === 'text' && (
+                      <div className="color-palette" role="menu" aria-label="Text color choices">
+                        {COLORS.map((color) => (
+                          <button
+                            key={color}
+                            className="color-swatch"
+                            title={color}
+                            style={{ backgroundColor: color }}
+                            onClick={() => {
+                              editor?.chain().focus().setColor(color).run()
+                              setOpenPalette(null)
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <div className="toolbar-menu">
+                    <button
+                      className="toolbar-button highlight-button"
+                      title="Highlight color"
+                      aria-label="Highlight color"
+                      onClick={() =>
+                        setOpenPalette(openPalette === 'highlight' ? null : 'highlight')
+                      }
+                    >
+                      ▰
+                    </button>
+                    {openPalette === 'highlight' && (
+                      <div
+                        className="color-palette"
+                        role="menu"
+                        aria-label="Highlight color choices"
+                      >
+                        {HIGHLIGHTS.map((color) => (
+                          <button
+                            key={color}
+                            className="color-swatch"
+                            title={color}
+                            style={{ backgroundColor: color }}
+                            onClick={() => {
+                              editor?.chain().focus().setHighlight({ color }).run()
+                              setOpenPalette(null)
+                            }}
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="toolbar-group toolbar-selects">
+                  <select
+                    aria-label="Paragraph alignment"
+                    defaultValue="left"
+                    onChange={(event) =>
+                      editor?.chain().focus().setTextAlign(event.target.value).run()
+                    }
+                  >
+                    <option value="left">Align left</option>
+                    <option value="center">Align center</option>
+                    <option value="right">Align right</option>
+                    <option value="justify">Justify</option>
+                  </select>
+                  <select
+                    aria-label="Line spacing"
+                    defaultValue="1.5"
+                    onChange={(event) => updateBlockStyle({ lineSpacing: event.target.value })}
+                  >
+                    <option value="1">1.0</option>
+                    <option value="1.15">1.15</option>
+                    <option value="1.5">1.5</option>
+                    <option value="2">2.0</option>
+                  </select>
+                </div>
+                <div className="toolbar-group">
+                  <button
+                    className={
+                      editor?.isActive('bulletList') ? 'toolbar-button active' : 'toolbar-button'
+                    }
+                    title="Bulleted list"
+                    aria-label="Bulleted list"
+                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
+                  >
+                    •≡
+                  </button>
+                  <button
+                    className={
+                      editor?.isActive('orderedList') ? 'toolbar-button active' : 'toolbar-button'
+                    }
+                    title="Numbered list"
+                    aria-label="Numbered list"
+                    onClick={() => editor?.chain().focus().toggleOrderedList().run()}
+                  >
+                    1≡
+                  </button>
+                  <button
+                    className="toolbar-button"
+                    title="Decrease indent"
+                    aria-label="Decrease indent"
+                    onClick={() => changeIndent(-1)}
+                  >
+                    ≪
+                  </button>
+                  <button
+                    className="toolbar-button"
+                    title="Increase indent"
+                    aria-label="Increase indent"
+                    onClick={() => changeIndent(1)}
+                  >
+                    ≫
+                  </button>
+                  <button
+                    className={
+                      editor?.isActive('blockquote') ? 'toolbar-button active' : 'toolbar-button'
+                    }
+                    title="Block quote"
+                    aria-label="Block quote"
+                    onClick={() => editor?.chain().focus().toggleBlockquote().run()}
+                  >
+                    ❝
+                  </button>
+                  <button
+                    className="toolbar-button"
+                    title="Clear formatting"
+                    aria-label="Clear formatting"
+                    onClick={() => {
+                      editor?.chain().focus().clearNodes().unsetAllMarks().setParagraph().run()
+                      updateBlockStyle({ lineSpacing: null, indent: 0 })
+                    }}
+                  >
+                    Tx
+                  </button>
+                </div>
               </div>
             </header>
 
@@ -503,6 +824,9 @@ function App(): React.JSX.Element {
             <div className="editor-wrap">
               <EditorContent editor={editor} />
             </div>
+            <footer className="editor-status">
+              {(chapterWords[selectedChapter.id] ?? 0).toLocaleString()} words
+            </footer>
           </>
         ) : (
           <div className="empty-state">

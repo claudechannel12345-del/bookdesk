@@ -5,6 +5,12 @@ export interface ChapterMeta {
   title: string
 }
 
+/** Markdown remains the Claude-editable source; document preserves editor-only formatting. */
+export interface ChapterContent {
+  markdown: string
+  document: Record<string, unknown> | null
+}
+
 export interface BookMeta {
   id: string
   title: string

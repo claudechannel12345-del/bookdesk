@@ -50,6 +50,9 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   // ---- Books ----
   ipcMain.handle('books:list', () => store.listBooks())
   ipcMain.handle('books:create', (_e, title: string) => store.createBook(title))
+  ipcMain.handle('books:rename', (_e, bookId: string, title: string) =>
+    store.renameBook(bookId, title)
+  )
   ipcMain.handle('books:open', (event, bookId: string) => {
     activeBookId = bookId
     ensureSession(bookId, (chapterId, content) => {
@@ -77,11 +80,27 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle('chapters:read', (_e, bookId: string, chapterId: string) =>
     store.readChapter(bookId, chapterId)
   )
+  ipcMain.handle('chapters:readContent', (_e, bookId: string, chapterId: string) =>
+    store.readChapterContent(bookId, chapterId)
+  )
   ipcMain.handle(
     'chapters:write',
     async (_e, bookId: string, chapterId: string, markdown: string) => {
       recordSelfWrite(bookId, chapterId, markdown)
       await store.writeChapter(bookId, chapterId, markdown)
+    }
+  )
+  ipcMain.handle(
+    'chapters:writeContent',
+    async (
+      _e,
+      bookId: string,
+      chapterId: string,
+      markdown: string,
+      document: Record<string, unknown>
+    ) => {
+      recordSelfWrite(bookId, chapterId, markdown)
+      await store.writeChapterContent(bookId, chapterId, markdown, document)
     }
   )
 

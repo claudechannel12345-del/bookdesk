@@ -6,11 +6,13 @@ import {
   bookDir,
   chaptersDir,
   snapshotsDir,
+  formattingDir,
   bookJsonPath,
   chapterPath,
+  chapterFormatPath,
   writingRulesPath
 } from './paths'
-import type { BookMeta, BookSummary } from '../../shared/types'
+import type { BookMeta, BookSummary, ChapterContent } from '../../shared/types'
 
 const WRITING_RULES_TEMPLATE = `Tell Claude how you want the book written — style, tone, things to always/never do.
 
@@ -66,6 +68,7 @@ async function createBook(title: string): Promise<BookMeta> {
   const id = slugify(title)
   mkdirSync(chaptersDir(id), { recursive: true })
   mkdirSync(snapshotsDir(id), { recursive: true })
+  mkdirSync(formattingDir(id), { recursive: true })
   const firstChapter = { id: newChapterId(), title: 'Chapter 1' }
   await fs.writeFile(chapterPath(id, firstChapter.id), '', 'utf8')
   await fs.writeFile(writingRulesPath(id), `<!--\n${WRITING_RULES_TEMPLATE}\n-->`, 'utf8')
@@ -102,6 +105,7 @@ async function deleteChapter(bookId: string, chapterId: string): Promise<BookMet
   book.chapters = book.chapters.filter((c) => c.id !== chapterId)
   await writeBook(book)
   await fs.rm(chapterPath(bookId, chapterId), { force: true })
+  await fs.rm(chapterFormatPath(bookId, chapterId), { force: true })
   return book
 }
 
@@ -125,6 +129,34 @@ async function readChapter(bookId: string, chapterId: string): Promise<string> {
 
 async function writeChapter(bookId: string, chapterId: string, markdown: string): Promise<void> {
   await fs.writeFile(chapterPath(bookId, chapterId), markdown, 'utf8')
+}
+
+async function readChapterContent(bookId: string, chapterId: string): Promise<ChapterContent> {
+  const markdown = await readChapter(bookId, chapterId)
+  try {
+    const saved = JSON.parse(await fs.readFile(chapterFormatPath(bookId, chapterId), 'utf8'))
+    if (saved?.markdown === markdown && saved.document && typeof saved.document === 'object') {
+      return { markdown, document: saved.document }
+    }
+  } catch {
+    // A missing or stale formatting sidecar falls back to the Claude-editable Markdown.
+  }
+  return { markdown, document: null }
+}
+
+async function writeChapterContent(
+  bookId: string,
+  chapterId: string,
+  markdown: string,
+  document: Record<string, unknown>
+): Promise<void> {
+  await writeChapter(bookId, chapterId, markdown)
+  await fs.mkdir(formattingDir(bookId), { recursive: true })
+  await fs.writeFile(
+    chapterFormatPath(bookId, chapterId),
+    JSON.stringify({ markdown, document }),
+    'utf8'
+  )
 }
 
 async function readWritingRules(bookId: string): Promise<string> {
@@ -151,6 +183,13 @@ async function setModel(bookId: string, model: string): Promise<void> {
   await writeBook(book)
 }
 
+async function renameBook(bookId: string, title: string): Promise<BookMeta> {
+  const book = await readBook(bookId)
+  book.title = title.trim() || book.title
+  await writeBook(book)
+  return book
+}
+
 export const store = {
   bookDir,
   chaptersDir,
@@ -164,8 +203,11 @@ export const store = {
   reorderChapters,
   readChapter,
   writeChapter,
+  readChapterContent,
+  writeChapterContent,
   readWritingRules,
   writeWritingRules,
   setSessionId,
-  setModel
+  setModel,
+  renameBook
 }

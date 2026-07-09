@@ -53,7 +53,7 @@ function describeTool(name: string, input: Record<string, unknown>): string {
 const APPEND_SYSTEM_PROMPT =
   'You are a co-author/editor inside a book-writing app. The book is the markdown files in chapters/. ' +
   "Make edits directly to those files when asked. Keep the author's voice. " +
-  'Never touch book.json, .snapshots, or CLAUDE.md.'
+  'Never touch book.json, .snapshots, CLAUDE.md, or .bookdesk-format.'
 
 export interface ClaudeTurnOptions {
   cwd: string

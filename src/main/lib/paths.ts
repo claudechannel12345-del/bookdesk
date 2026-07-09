@@ -17,12 +17,20 @@ export function snapshotsDir(bookId: string): string {
   return join(bookDir(bookId), '.snapshots')
 }
 
+export function formattingDir(bookId: string): string {
+  return join(bookDir(bookId), '.bookdesk-format')
+}
+
 export function bookJsonPath(bookId: string): string {
   return join(bookDir(bookId), 'book.json')
 }
 
 export function chapterPath(bookId: string, chapterId: string): string {
   return join(chaptersDir(bookId), `${chapterId}.md`)
+}
+
+export function chapterFormatPath(bookId: string, chapterId: string): string {
+  return join(formattingDir(bookId), `${chapterId}.json`)
 }
 
 export function writingRulesPath(bookId: string): string {
