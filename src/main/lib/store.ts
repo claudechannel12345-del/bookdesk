@@ -161,7 +161,8 @@ async function writeChapterContent(
 
 async function readWritingRules(bookId: string): Promise<string> {
   try {
-    return await fs.readFile(writingRulesPath(bookId), 'utf8')
+    const rules = await fs.readFile(writingRulesPath(bookId), 'utf8')
+    return rules.replace(/^<!--\s*\n?/, '').replace(/\n?-->\s*$/, '')
   } catch {
     return WRITING_RULES_TEMPLATE
   }

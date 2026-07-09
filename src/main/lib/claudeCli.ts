@@ -1,13 +1,22 @@
 import { spawn, spawnSync } from 'child_process'
-import { basename } from 'path'
+import { existsSync } from 'fs'
+import { basename, join } from 'path'
 import { tmpdir } from 'os'
 import type { AgentEvent, DetectResult, TestConnectionResult } from '../../shared/types'
 
-const useShell = process.platform === 'win32'
-
 const FALLBACK_PATHS =
   process.platform === 'win32'
-    ? [`${process.env.APPDATA}\\npm\\claude.cmd`]
+    ? [
+        join(
+          process.env.APPDATA ?? '',
+          'npm',
+          'node_modules',
+          '@anthropic-ai',
+          'claude-code',
+          'bin',
+          'claude.exe'
+        )
+      ]
     : [
         '/usr/local/bin/claude',
         '/opt/homebrew/bin/claude',
@@ -16,7 +25,7 @@ const FALLBACK_PATHS =
 
 function tryVersion(bin: string): string | null {
   try {
-    const res = spawnSync(bin, ['--version'], { shell: useShell, timeout: 10000 })
+    const res = spawnSync(bin, ['--version'], { timeout: 10000, windowsHide: true })
     if (res.status === 0) return res.stdout.toString().trim()
   } catch {
     // fall through
@@ -25,13 +34,23 @@ function tryVersion(bin: string): string | null {
 }
 
 export function detectClaude(): DetectResult {
-  const version = tryVersion('claude')
-  if (version) return { found: true, path: 'claude', version }
+  if (process.platform !== 'win32') {
+    const version = tryVersion('claude')
+    if (version) return { found: true, path: 'claude', version }
+  }
   for (const candidate of FALLBACK_PATHS) {
     const v = tryVersion(candidate)
     if (v) return { found: true, path: candidate, version: v }
   }
   return { found: false }
+}
+
+function claudeBinary(): string {
+  if (process.platform === 'win32') {
+    const installed = FALLBACK_PATHS.find((candidate) => existsSync(candidate))
+    if (installed) return installed
+  }
+  return 'claude'
 }
 
 function describeTool(name: string, input: Record<string, unknown>): string {
@@ -89,9 +108,8 @@ export function runClaudeTurn(opts: ClaudeTurnOptions): Promise<ClaudeTurnResult
   return new Promise((resolve) => {
     let child
     try {
-      child = spawn('claude', args, {
+      child = spawn(claudeBinary(), args, {
         cwd: opts.cwd,
-        shell: useShell,
         stdio: ['ignore', 'pipe', 'pipe']
       })
     } catch {
@@ -183,7 +201,7 @@ export function testConnection(): Promise<TestConnectionResult> {
     let child
     try {
       child = spawn(
-        'claude',
+        claudeBinary(),
         [
           '-p',
           'Reply with exactly the single word: pong',
@@ -193,7 +211,7 @@ export function testConnection(): Promise<TestConnectionResult> {
           '--model',
           'sonnet'
         ],
-        { cwd: tmpdir(), shell: useShell, stdio: ['ignore', 'pipe', 'pipe'] }
+        { cwd: tmpdir(), stdio: ['ignore', 'pipe', 'pipe'] }
       )
     } catch {
       resolve({ ok: false, message: 'Could not start the claude CLI.' })

@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { EditorContent, useEditor } from '@tiptap/react'
-import { type Editor, type JSONContent } from '@tiptap/core'
-import StarterKit from '@tiptap/starter-kit'
+import type { Editor, JSONContent } from '@tiptap/core'
 import Color from '@tiptap/extension-color'
 import FontFamily from '@tiptap/extension-font-family'
 import Highlight from '@tiptap/extension-highlight'
@@ -9,8 +7,10 @@ import Link from '@tiptap/extension-link'
 import TextAlign from '@tiptap/extension-text-align'
 import TextStyle from '@tiptap/extension-text-style'
 import Underline from '@tiptap/extension-underline'
+import { EditorContent, useEditor } from '@tiptap/react'
+import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown'
-import { DocumentLayout } from './editorExtensions'
+import { DocumentLayout, FontSize } from './editorExtensions'
 import type {
   AgentEvent,
   BookMeta,
@@ -24,15 +24,14 @@ import { CLAUDE_MODELS } from '../../shared/types'
 
 const emptyDetect: DetectResult = { found: false }
 
-const FONT_OPTIONS = [
-  { label: 'Arial', value: 'Arial, Helvetica, sans-serif' },
-  { label: 'Georgia', value: 'Georgia, serif' },
-  { label: 'Palatino', value: 'Palatino Linotype, Book Antiqua, serif' },
-  { label: 'Courier New', value: 'Courier New, monospace' }
-]
-const FONT_SIZES = ['11', '12', '14', '16', '18', '24', '32']
-const COLORS = ['#202124', '#b3261e', '#e37400', '#188038', '#1a73e8', '#7627bb']
-const HIGHLIGHTS = ['#fff475', '#fbbc04', '#ccff90', '#a7ffeb', '#cbf0f8', '#d7aefb']
+const FONT_FAMILIES = [
+  ['Arial', 'Arial, Helvetica, sans-serif'],
+  ['Georgia', 'Georgia, serif'],
+  ['Courier New', '"Courier New", monospace']
+] as const
+
+const TEXT_COLORS = ['#202124', '#5f6368', '#c5221f', '#ea8600', '#188038', '#1a73e8', '#9334e6']
+const HIGHLIGHT_COLORS = ['#ffffff', '#fce8b2', '#f8d8d8', '#d4e8d2', '#d5e5f7', '#e8d7f4']
 
 function id(): string {
   return Math.random().toString(36).slice(2)
@@ -46,15 +45,13 @@ function chapterLabel(index: number, title: string): string {
   return `${index + 1}. ${title}`
 }
 
-function markdownOf(editor: NonNullable<ReturnType<typeof useEditor>>): string {
+function markdownOf(editor: Editor): string {
   return (editor.storage.markdown as { getMarkdown: () => string }).getMarkdown()
 }
 
-function loadRichDocument(editor: Editor, document: Record<string, unknown>): void {
-  const richDocument = editor.schema.nodeFromJSON(document as JSONContent)
-  editor.view.dispatch(
-    editor.state.tr.replaceWith(0, editor.state.doc.content.size, richDocument.content)
-  )
+function restoreDocument(editor: Editor, document: Record<string, unknown>): void {
+  const next = editor.schema.nodeFromJSON(document as unknown as JSONContent)
+  editor.view.dispatch(editor.state.tr.replaceWith(0, editor.state.doc.content.size, next.content))
 }
 
 function App(): React.JSX.Element {
@@ -76,7 +73,6 @@ function App(): React.JSX.Element {
   const [setupMessage, setSetupMessage] = useState('')
   const [needsClaudeSetup, setNeedsClaudeSetup] = useState(false)
   const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null)
-  const [openPalette, setOpenPalette] = useState<'text' | 'highlight' | null>(null)
 
   const bookIdRef = useRef<string | null>(null)
   const selectedChapterIdRef = useRef<string | null>(null)
@@ -89,6 +85,7 @@ function App(): React.JSX.Element {
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
       TextStyle,
+      FontSize,
       Color.configure({ types: ['textStyle'] }),
       FontFamily.configure({ types: ['textStyle'] }),
       Highlight.configure({ multicolor: true }),
@@ -100,20 +97,16 @@ function App(): React.JSX.Element {
     ],
     content: '',
     editorProps: {
-      attributes: {
-        class: 'editor-page'
-      }
+      attributes: { class: 'editor-page' }
     },
-    onUpdate: ({ editor }) => {
+    onUpdate: ({ editor: updated }) => {
       if (loadingRef.current) return
       dirtyRef.current = true
+      const markdown = markdownOf(updated)
       const chapterId = selectedChapterIdRef.current
-      if (chapterId)
-        setChapterWords((words) => ({ ...words, [chapterId]: wordCount(editor.getText()) }))
+      if (chapterId) setChapterWords((words) => ({ ...words, [chapterId]: wordCount(markdown) }))
       if (saveTimerRef.current) window.clearTimeout(saveTimerRef.current)
-      saveTimerRef.current = window.setTimeout(() => {
-        void saveNowRef.current()
-      }, 2000)
+      saveTimerRef.current = window.setTimeout(() => void saveNowRef.current(), 2000)
     }
   })
 
@@ -135,25 +128,20 @@ function App(): React.JSX.Element {
       if (event.kind === 'text') {
         setMessages((items) => {
           const last = items[items.length - 1]
-          if (last?.speaker === speaker) {
-            return [...items.slice(0, -1), { ...last, text: last.text + event.text }]
-          }
+          if (last?.speaker === speaker) return [...items.slice(0, -1), { ...last, text: last.text + event.text }]
           return [...items, { id: id(), speaker, text: event.text }]
         })
         return
       }
       if (event.kind === 'tool') appendMessage('claude-tool', event.label)
-      if (event.kind === 'done') {
+      if (event.kind === 'done' && speaker === 'claude') {
         setClaudeRunning(false)
-        if (event.summary && speaker === 'claude') appendMessage('system', 'Claude finished.')
+        if (event.summary) appendMessage('system', 'Claude finished.')
       }
       if (event.kind === 'error') {
-        setClaudeRunning(false)
+        if (speaker === 'claude') setClaudeRunning(false)
         appendMessage('system', event.message)
-        if (
-          speaker === 'claude' &&
-          /auth|log ?in|not logged|unauthori[sz]ed/i.test(event.message)
-        ) {
+        if (speaker === 'claude' && /auth|log ?in|not logged|unauthori[sz]ed/i.test(event.message)) {
           setNeedsClaudeSetup(true)
           setSetupMessage('Claude needs a sign-in. Run claude once in Terminal, then try again.')
         }
@@ -162,9 +150,7 @@ function App(): React.JSX.Element {
     [appendMessage]
   )
 
-  const refreshBooks = useCallback(async () => {
-    setBooks(await window.api.books.list())
-  }, [])
+  const refreshBooks = useCallback(async () => setBooks(await window.api.books.list()), [])
 
   const loadWordCounts = useCallback(async (nextBook: BookMeta) => {
     const pairs = await Promise.all(
@@ -213,11 +199,11 @@ function App(): React.JSX.Element {
       if (!editor || !bookIdRef.current || !chapterId) return
       const content = await window.api.chapters.readContent(bookIdRef.current, chapterId)
       loadingRef.current = true
-      if (content.document) loadRichDocument(editor, content.document)
+      if (content.document) restoreDocument(editor, content.document)
       else editor.commands.setContent(content.markdown, false)
       loadingRef.current = false
       dirtyRef.current = false
-      setChapterWords((words) => ({ ...words, [chapterId]: wordCount(editor.getText()) }))
+      setChapterWords((words) => ({ ...words, [chapterId]: wordCount(content.markdown) }))
     },
     [editor]
   )
@@ -229,8 +215,7 @@ function App(): React.JSX.Element {
   }, [refreshBooks])
 
   useEffect(() => {
-    if (!selectedChapterId || !editor) return
-    void loadChapter(selectedChapterId)
+    if (selectedChapterId && editor) void loadChapter(selectedChapterId)
   }, [editor, loadChapter, selectedChapterId])
 
   useEffect(() => {
@@ -267,37 +252,8 @@ function App(): React.JSX.Element {
     }
   }, [appendAgentEvent, editor, openBook])
 
-  function updateBlockStyle(attributes: Record<string, unknown>): void {
-    if (!editor) return
-    const type = editor.isActive('heading')
-      ? 'heading'
-      : editor.isActive('blockquote')
-        ? 'blockquote'
-        : 'paragraph'
-    editor.chain().focus().updateAttributes(type, attributes).run()
-  }
-
-  function changeIndent(amount: number): void {
-    if (!editor) return
-    const type = editor.isActive('heading')
-      ? 'heading'
-      : editor.isActive('blockquote')
-        ? 'blockquote'
-        : 'paragraph'
-    const current = Number(editor.getAttributes(type).indent ?? 0)
-    updateBlockStyle({ indent: Math.max(0, current + amount) })
-  }
-
-  async function saveBookTitle(): Promise<void> {
-    if (!book) return
-    const nextBook = await window.api.books.rename(book.id, book.title)
-    setBook(nextBook)
-    await refreshBooks()
-  }
-
   async function createBook(): Promise<void> {
-    const title = newBookTitle.trim() || 'Untitled Book'
-    const nextBook = await window.api.books.create(title)
+    const nextBook = await window.api.books.create(newBookTitle.trim() || 'Untitled Book')
     await refreshBooks()
     await openBook(nextBook.id)
   }
@@ -341,12 +297,15 @@ function App(): React.JSX.Element {
     if (from < 0 || to < 0) return
     const [moved] = chapters.splice(from, 1)
     chapters.splice(to, 0, moved)
-    const nextBook = await window.api.chapters.reorder(
-      book.id,
-      chapters.map((chapter) => chapter.id)
-    )
-    setBook(nextBook)
+    setBook(await window.api.chapters.reorder(book.id, chapters.map((chapter) => chapter.id)))
     setDraggingChapterId(null)
+  }
+
+  async function saveBookTitle(): Promise<void> {
+    if (!book) return
+    const nextBook = await window.api.books.rename(book.id, book.title)
+    setBook(nextBook)
+    await refreshBooks()
   }
 
   async function sendClaude(): Promise<void> {
@@ -366,10 +325,7 @@ function App(): React.JSX.Element {
   async function sendCodex(): Promise<void> {
     if (!book || !chatText.trim()) return
     if (!codexDetect.found) {
-      appendMessage(
-        'system',
-        'Codex is optional. Install the codex CLI to use Second opinion; this app will keep working without it.'
-      )
+      appendMessage('system', 'Codex is optional. Install the codex CLI to use Second opinion.')
       return
     }
     const text = chatText.trim()
@@ -397,8 +353,7 @@ function App(): React.JSX.Element {
   }
 
   async function showDiff(entry: ReviewEntry): Promise<void> {
-    if (!book) return
-    setDiff(await window.api.review.diff(book.id, entry.chapterId))
+    if (book) setDiff(await window.api.review.diff(book.id, entry.chapterId))
   }
 
   async function undoReview(entry: ReviewEntry): Promise<void> {
@@ -411,8 +366,32 @@ function App(): React.JSX.Element {
 
   async function testClaude(): Promise<void> {
     setSetupMessage('Testing Claude...')
-    const result = await window.api.detect.testClaude()
-    setSetupMessage(result.message)
+    setSetupMessage((await window.api.detect.testClaude()).message)
+  }
+
+  function activeBlock(): 'paragraph' | 'heading' | 'blockquote' {
+    if (editor?.isActive('heading')) return 'heading'
+    if (editor?.isActive('blockquote')) return 'blockquote'
+    return 'paragraph'
+  }
+
+  function setLineSpacing(value: string): void {
+    if (!editor) return
+    editor.chain().focus().updateAttributes(activeBlock(), { lineSpacing: value }).run()
+  }
+
+  function changeIndent(delta: number): void {
+    if (!editor) return
+    const block = activeBlock()
+    const current = Number(editor.getAttributes(block).indent || 0)
+    editor.chain().focus().updateAttributes(block, { indent: Math.max(0, current + delta) }).run()
+  }
+
+  function setStyle(value: string): void {
+    if (!editor) return
+    if (value === 'normal') editor.chain().focus().setParagraph().run()
+    else if (value === 'title') editor.chain().focus().setNode('heading', { level: 1 }).run()
+    else editor.chain().focus().setNode('heading', { level: Number(value.slice(-1)) as 1 | 2 | 3 }).run()
   }
 
   if (!claudeDetect.found || needsClaudeSetup) {
@@ -426,20 +405,9 @@ function App(): React.JSX.Element {
               : 'BookDesk needs the Claude CLI before it can edit your book.'}
           </p>
           <pre>npm install -g @anthropic-ai/claude-code</pre>
-          <p>
-            Then run <code>claude</code> once in Terminal and sign in.
-          </p>
+          <p>Then run <code>claude</code> once in Terminal and sign in.</p>
           <div className="setup-actions">
-            <button
-              onClick={() =>
-                void window.api.detect.claude().then((result) => {
-                  setClaudeDetect(result)
-                  if (result.found) setNeedsClaudeSetup(false)
-                })
-              }
-            >
-              Check again
-            </button>
+            <button onClick={() => void window.api.detect.claude().then(setClaudeDetect)}>Check again</button>
             <button onClick={() => void testClaude()}>Test connection</button>
           </div>
           {setupMessage && <p className="setup-message">{setupMessage}</p>}
@@ -455,473 +423,91 @@ function App(): React.JSX.Element {
           <h1>BookDesk</h1>
           <p>{totalWords.toLocaleString()} words</p>
         </div>
-
         <div className="book-picker">
           <select value={book?.id ?? ''} onChange={(event) => void openBook(event.target.value)}>
-            <option value="" disabled>
-              Open a book
-            </option>
-            {books.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.title}
-              </option>
-            ))}
+            <option value="" disabled>Open a book</option>
+            {books.map((item) => <option key={item.id} value={item.id}>{item.title}</option>)}
           </select>
           <div className="new-book">
-            <input value={newBookTitle} onChange={(event) => setNewBookTitle(event.target.value)} />
+            <input value={newBookTitle} onChange={(event) => setNewBookTitle(event.target.value)} aria-label="New book title" />
             <button onClick={() => void createBook()}>New</button>
           </div>
         </div>
-
-        {book && (
-          <>
-            <div className="sidebar-row">
-              <h2>Chapters</h2>
-              <button onClick={() => void addChapter()}>Add</button>
-            </div>
-            <ol className="chapter-list">
-              {book.chapters.map((chapter, index) => (
-                <li
-                  key={chapter.id}
-                  draggable
-                  onDragStart={() => setDraggingChapterId(chapter.id)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => void moveChapter(chapter.id)}
-                  className={chapter.id === selectedChapterId ? 'active' : ''}
-                >
-                  <button className="chapter-main" onClick={() => void chooseChapter(chapter.id)}>
-                    <span>{chapterLabel(index, chapter.title)}</span>
-                    <small>{(chapterWords[chapter.id] ?? 0).toLocaleString()} words</small>
-                  </button>
-                  <button title="Rename chapter" onClick={() => void renameChapter(chapter.id)}>
-                    Rename
-                  </button>
-                  <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ol>
-            <button className="rules-button" onClick={() => void openRules()}>
-              Writing Rules
-            </button>
-          </>
-        )}
+        {book && <>
+          <div className="sidebar-row"><h2>Chapters</h2><button onClick={() => void addChapter()}>Add</button></div>
+          <ol className="chapter-list">
+            {book.chapters.map((chapter, index) => (
+              <li key={chapter.id} draggable onDragStart={() => setDraggingChapterId(chapter.id)} onDragOver={(event) => event.preventDefault()} onDrop={() => void moveChapter(chapter.id)} className={chapter.id === selectedChapterId ? 'active' : ''}>
+                <button className="chapter-main" onClick={() => void chooseChapter(chapter.id)}><span>{chapterLabel(index, chapter.title)}</span><small>{(chapterWords[chapter.id] ?? 0).toLocaleString()} words</small></button>
+                <button title="Rename chapter" onClick={() => void renameChapter(chapter.id)}>Rename</button>
+                <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>Delete</button>
+              </li>
+            ))}
+          </ol>
+          <button className="rules-button" onClick={() => void openRules()}>Writing Rules</button>
+        </>}
       </aside>
 
       <section className="editor-pane">
-        {book && selectedChapter ? (
-          <>
-            <header className="editor-header">
-              <div className="document-title-row">
-                <input
-                  className="document-title"
-                  aria-label="Document title"
-                  value={book.title}
-                  onChange={(event) => setBook({ ...book, title: event.target.value })}
-                  onBlur={() => void saveBookTitle()}
-                />
-                <span>{selectedChapter.title}</span>
-              </div>
-              <div className="toolbar" role="toolbar" aria-label="Document formatting">
-                <div className="toolbar-group">
-                  <button
-                    className="toolbar-button"
-                    title="Undo"
-                    aria-label="Undo"
-                    onClick={() => editor?.chain().focus().undo().run()}
-                  >
-                    ↶
-                  </button>
-                  <button
-                    className="toolbar-button"
-                    title="Redo"
-                    aria-label="Redo"
-                    onClick={() => editor?.chain().focus().redo().run()}
-                  >
-                    ↷
-                  </button>
-                </div>
-                <div className="toolbar-group toolbar-selects">
-                  <select
-                    aria-label="Text style"
-                    defaultValue="normal"
-                    onChange={(event) => {
-                      const value = event.target.value
-                      if (value === 'normal') editor?.chain().focus().setParagraph().run()
-                      else if (value === 'title')
-                        editor?.chain().focus().setHeading({ level: 1 }).run()
-                      else
-                        editor
-                          ?.chain()
-                          .focus()
-                          .setHeading({ level: Number(value) as 1 | 2 | 3 })
-                          .run()
-                    }}
-                  >
-                    <option value="normal">Normal text</option>
-                    <option value="title">Title</option>
-                    <option value="1">Heading 1</option>
-                    <option value="2">Heading 2</option>
-                    <option value="3">Heading 3</option>
-                  </select>
-                  <select
-                    aria-label="Font family"
-                    defaultValue={FONT_OPTIONS[0].value}
-                    onChange={(event) =>
-                      editor?.chain().focus().setFontFamily(event.target.value).run()
-                    }
-                  >
-                    {FONT_OPTIONS.map((font) => (
-                      <option key={font.label} value={font.value}>
-                        {font.label}
-                      </option>
-                    ))}
-                  </select>
-                  <select
-                    aria-label="Font size"
-                    defaultValue="16"
-                    onChange={(event) =>
-                      editor
-                        ?.chain()
-                        .focus()
-                        .setMark('textStyle', { fontSize: `${event.target.value}px` })
-                        .run()
-                    }
-                  >
-                    {FONT_SIZES.map((size) => (
-                      <option key={size} value={size}>
-                        {size}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="toolbar-group">
-                  <button
-                    className={
-                      editor?.isActive('bold') ? 'toolbar-button active' : 'toolbar-button'
-                    }
-                    title="Bold (Ctrl/Cmd+B)"
-                    aria-label="Bold"
-                    onClick={() => editor?.chain().focus().toggleBold().run()}
-                  >
-                    B
-                  </button>
-                  <button
-                    className={
-                      editor?.isActive('italic')
-                        ? 'toolbar-button active italic'
-                        : 'toolbar-button italic'
-                    }
-                    title="Italic (Ctrl/Cmd+I)"
-                    aria-label="Italic"
-                    onClick={() => editor?.chain().focus().toggleItalic().run()}
-                  >
-                    I
-                  </button>
-                  <button
-                    className={
-                      editor?.isActive('underline')
-                        ? 'toolbar-button active underlined'
-                        : 'toolbar-button underlined'
-                    }
-                    title="Underline (Ctrl/Cmd+U)"
-                    aria-label="Underline"
-                    onClick={() => editor?.chain().focus().toggleUnderline().run()}
-                  >
-                    U
-                  </button>
-                  <button
-                    className={
-                      editor?.isActive('strike')
-                        ? 'toolbar-button active struck'
-                        : 'toolbar-button struck'
-                    }
-                    title="Strikethrough"
-                    aria-label="Strikethrough"
-                    onClick={() => editor?.chain().focus().toggleStrike().run()}
-                  >
-                    S
-                  </button>
-                  <div className="toolbar-menu">
-                    <button
-                      className="toolbar-button color-button"
-                      title="Text color"
-                      aria-label="Text color"
-                      onClick={() => setOpenPalette(openPalette === 'text' ? null : 'text')}
-                    >
-                      A
-                    </button>
-                    {openPalette === 'text' && (
-                      <div className="color-palette" role="menu" aria-label="Text color choices">
-                        {COLORS.map((color) => (
-                          <button
-                            key={color}
-                            className="color-swatch"
-                            title={color}
-                            style={{ backgroundColor: color }}
-                            onClick={() => {
-                              editor?.chain().focus().setColor(color).run()
-                              setOpenPalette(null)
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  <div className="toolbar-menu">
-                    <button
-                      className="toolbar-button highlight-button"
-                      title="Highlight color"
-                      aria-label="Highlight color"
-                      onClick={() =>
-                        setOpenPalette(openPalette === 'highlight' ? null : 'highlight')
-                      }
-                    >
-                      ▰
-                    </button>
-                    {openPalette === 'highlight' && (
-                      <div
-                        className="color-palette"
-                        role="menu"
-                        aria-label="Highlight color choices"
-                      >
-                        {HIGHLIGHTS.map((color) => (
-                          <button
-                            key={color}
-                            className="color-swatch"
-                            title={color}
-                            style={{ backgroundColor: color }}
-                            onClick={() => {
-                              editor?.chain().focus().setHighlight({ color }).run()
-                              setOpenPalette(null)
-                            }}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="toolbar-group toolbar-selects">
-                  <select
-                    aria-label="Paragraph alignment"
-                    defaultValue="left"
-                    onChange={(event) =>
-                      editor?.chain().focus().setTextAlign(event.target.value).run()
-                    }
-                  >
-                    <option value="left">Align left</option>
-                    <option value="center">Align center</option>
-                    <option value="right">Align right</option>
-                    <option value="justify">Justify</option>
-                  </select>
-                  <select
-                    aria-label="Line spacing"
-                    defaultValue="1.5"
-                    onChange={(event) => updateBlockStyle({ lineSpacing: event.target.value })}
-                  >
-                    <option value="1">1.0</option>
-                    <option value="1.15">1.15</option>
-                    <option value="1.5">1.5</option>
-                    <option value="2">2.0</option>
-                  </select>
-                </div>
-                <div className="toolbar-group">
-                  <button
-                    className={
-                      editor?.isActive('bulletList') ? 'toolbar-button active' : 'toolbar-button'
-                    }
-                    title="Bulleted list"
-                    aria-label="Bulleted list"
-                    onClick={() => editor?.chain().focus().toggleBulletList().run()}
-                  >
-                    •≡
-                  </button>
-                  <button
-                    className={
-                      editor?.isActive('orderedList') ? 'toolbar-button active' : 'toolbar-button'
-                    }
-                    title="Numbered list"
-                    aria-label="Numbered list"
-                    onClick={() => editor?.chain().focus().toggleOrderedList().run()}
-                  >
-                    1≡
-                  </button>
-                  <button
-                    className="toolbar-button"
-                    title="Decrease indent"
-                    aria-label="Decrease indent"
-                    onClick={() => changeIndent(-1)}
-                  >
-                    ≪
-                  </button>
-                  <button
-                    className="toolbar-button"
-                    title="Increase indent"
-                    aria-label="Increase indent"
-                    onClick={() => changeIndent(1)}
-                  >
-                    ≫
-                  </button>
-                  <button
-                    className={
-                      editor?.isActive('blockquote') ? 'toolbar-button active' : 'toolbar-button'
-                    }
-                    title="Block quote"
-                    aria-label="Block quote"
-                    onClick={() => editor?.chain().focus().toggleBlockquote().run()}
-                  >
-                    ❝
-                  </button>
-                  <button
-                    className="toolbar-button"
-                    title="Clear formatting"
-                    aria-label="Clear formatting"
-                    onClick={() => {
-                      editor?.chain().focus().clearNodes().unsetAllMarks().setParagraph().run()
-                      updateBlockStyle({ lineSpacing: null, indent: 0 })
-                    }}
-                  >
-                    Tx
-                  </button>
-                </div>
-              </div>
-            </header>
-
-            {conflictText && (
-              <div className="conflict-banner">
-                <span>Claude edited this chapter.</span>
-                <button
-                  onClick={() => {
-                    loadingRef.current = true
-                    editor?.commands.setContent(conflictText, false)
-                    loadingRef.current = false
-                    dirtyRef.current = false
-                    setConflictText(null)
-                  }}
-                >
-                  Reload
-                </button>
-                <button onClick={() => setConflictText(null)}>Keep mine</button>
-              </div>
-            )}
-
-            {reviews.length > 0 && (
-              <div className="review-strip">
-                {reviews.map((entry) => (
-                  <div key={entry.chapterId} className="review-item">
-                    <span>
-                      Claude changed {entry.chapterTitle} (+{entry.addedWords} / -
-                      {entry.removedWords} words)
-                    </span>
-                    <button onClick={() => void showDiff(entry)}>View changes</button>
-                    <button onClick={() => void undoReview(entry)}>Undo</button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="editor-wrap">
-              <EditorContent editor={editor} />
+        {book && selectedChapter ? <>
+          <header className="editor-header">
+            <input className="document-title" value={book.title} onChange={(event) => setBook({ ...book, title: event.target.value })} onBlur={() => void saveBookTitle()} aria-label="Document title" />
+            <span>{selectedChapter.title}</span>
+          </header>
+          <div className="docs-toolbar" aria-label="Document formatting toolbar">
+            <div className="toolbar-group">
+              <button title="Undo (Ctrl/Cmd+Z)" aria-label="Undo" onClick={() => editor?.chain().focus().undo().run()}>↶</button>
+              <button title="Redo (Ctrl/Cmd+Y)" aria-label="Redo" onClick={() => editor?.chain().focus().redo().run()}>↷</button>
             </div>
-            <footer className="editor-status">
-              {(chapterWords[selectedChapter.id] ?? 0).toLocaleString()} words
-            </footer>
-          </>
-        ) : (
-          <div className="empty-state">
-            <h2>Start with a book</h2>
-            <p>Create a book or open one from the list.</p>
+            <div className="toolbar-group toolbar-selects">
+              <select title="Text style" aria-label="Text style" defaultValue="" onChange={(event) => { if (event.target.value) setStyle(event.target.value); event.target.value = '' }}>
+                <option value="" disabled>Normal text</option><option value="normal">Normal text</option><option value="title">Title</option><option value="heading-1">Heading 1</option><option value="heading-2">Heading 2</option><option value="heading-3">Heading 3</option>
+              </select>
+              <select title="Font" aria-label="Font family" defaultValue="" onChange={(event) => editor?.chain().focus().setFontFamily(event.target.value).run()}>
+                <option value="" disabled>Font</option>{FONT_FAMILIES.map(([label, value]) => <option key={label} value={value}>{label}</option>)}
+              </select>
+              <select title="Font size" aria-label="Font size" defaultValue="" onChange={(event) => editor?.chain().focus().setMark('textStyle', { fontSize: event.target.value }).run()}>
+                <option value="" disabled>Size</option>{[10, 11, 12, 14, 16, 18, 24, 32].map((size) => <option key={size} value={`${size}pt`}>{size}</option>)}
+              </select>
+            </div>
+            <div className="toolbar-group">
+              <button title="Bold (Ctrl/Cmd+B)" aria-label="Bold" className={editor?.isActive('bold') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleBold().run()}><b>B</b></button>
+              <button title="Italic (Ctrl/Cmd+I)" aria-label="Italic" className={editor?.isActive('italic') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleItalic().run()}><i>I</i></button>
+              <button title="Underline (Ctrl/Cmd+U)" aria-label="Underline" className={editor?.isActive('underline') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleUnderline().run()}><u>U</u></button>
+              <button title="Strikethrough" aria-label="Strikethrough" className={editor?.isActive('strike') ? 'is-active' : ''} onClick={() => editor?.chain().focus().toggleStrike().run()}><s>S</s></button>
+            </div>
+            <div className="toolbar-group color-tools">
+              <details><summary title="Text color" aria-label="Text color">A<span className="color-bar text-color" /></summary><div className="color-palette">{TEXT_COLORS.map((color) => <button key={color} title={color} aria-label={`Text color ${color}`} className="color-swatch" style={{ background: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => editor?.chain().focus().setColor(color).run()} />)}</div></details>
+              <details><summary title="Highlight color" aria-label="Highlight color">▰<span className="color-bar highlight-color" /></summary><div className="color-palette">{HIGHLIGHT_COLORS.map((color) => <button key={color} title={color} aria-label={`Highlight ${color}`} className="color-swatch" style={{ background: color }} onMouseDown={(event) => event.preventDefault()} onClick={() => editor?.chain().focus().toggleHighlight({ color }).run()} />)}</div></details>
+            </div>
+            <div className="toolbar-group toolbar-selects">
+              <select title="Alignment" aria-label="Alignment" defaultValue="left" onChange={(event) => editor?.chain().focus().setTextAlign(event.target.value).run()}><option value="left">⇤</option><option value="center">≡</option><option value="right">⇥</option><option value="justify">☰</option></select>
+              <select title="Line spacing" aria-label="Line spacing" defaultValue="" onChange={(event) => setLineSpacing(event.target.value)}><option value="" disabled>Spacing</option>{['1.0', '1.15', '1.5', '2.0'].map((spacing) => <option key={spacing} value={spacing}>{spacing}</option>)}</select>
+            </div>
+            <div className="toolbar-group">
+              <button title="Bullet list" aria-label="Bullet list" onClick={() => editor?.chain().focus().toggleBulletList().run()}>•≡</button>
+              <button title="Numbered list" aria-label="Numbered list" onClick={() => editor?.chain().focus().toggleOrderedList().run()}>1≡</button>
+              <button title="Decrease indent" aria-label="Decrease indent" onClick={() => changeIndent(-1)}>⇤</button>
+              <button title="Increase indent" aria-label="Increase indent" onClick={() => changeIndent(1)}>⇥</button>
+              <button title="Blockquote" aria-label="Blockquote" onClick={() => editor?.chain().focus().toggleBlockquote().run()}>❝</button>
+              <button title="Clear formatting" aria-label="Clear formatting" onClick={() => editor?.chain().focus().unsetAllMarks().clearNodes().setTextAlign('left').run()}>Tx</button>
+            </div>
           </div>
-        )}
+          {conflictText && <div className="conflict-banner"><span>Claude edited this chapter.</span><button onClick={() => { loadingRef.current = true; editor?.commands.setContent(conflictText, false); loadingRef.current = false; dirtyRef.current = false; setConflictText(null) }}>Reload</button><button onClick={() => setConflictText(null)}>Keep mine</button></div>}
+          {reviews.length > 0 && <div className="review-strip">{reviews.map((entry) => <div key={entry.chapterId} className="review-item"><span>Claude changed {entry.chapterTitle} (+{entry.addedWords} / -{entry.removedWords} words)</span><button onClick={() => void showDiff(entry)}>View changes</button><button onClick={() => void undoReview(entry)}>Undo</button></div>)}</div>}
+          <div className="editor-wrap"><EditorContent editor={editor} /></div>
+          <footer className="editor-footer">{(chapterWords[selectedChapter.id] ?? 0).toLocaleString()} words</footer>
+        </> : <div className="empty-state"><h2>Start with a book</h2><p>Create a book or open one from the list.</p></div>}
       </section>
 
       <aside className="chat-pane">
-        <header>
-          <div>
-            <h2>Co-author</h2>
-            <p>{claudeDetect.version ?? 'Claude connected'}</p>
-          </div>
-          {book && (
-            <select value={book.model} onChange={(event) => void changeModel(event.target.value)}>
-              {CLAUDE_MODELS.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
-            </select>
-          )}
-        </header>
-        <div className="messages">
-          {messages.map((message) => (
-            <div key={message.id} className={`message ${message.speaker}`}>
-              {message.speaker === 'claude-tool' ? (
-                <span>{message.text}</span>
-              ) : (
-                <>
-                  {(message.speaker === 'claude' || message.speaker === 'codex') && (
-                    <span className="message-avatar" aria-hidden="true">
-                      {message.speaker === 'claude' ? 'C' : 'X'}
-                    </span>
-                  )}
-                  <span>{message.text}</span>
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-        <footer>
-          <textarea
-            value={chatText}
-            onChange={(event) => setChatText(event.target.value)}
-            placeholder="Ask Claude to revise, expand, or critique this chapter."
-          />
-          <div className="chat-actions">
-            <button
-              disabled={!book || claudeRunning || !chatText.trim()}
-              onClick={() => void sendClaude()}
-            >
-              {claudeRunning ? 'Claude is writing...' : 'Send to Claude'}
-            </button>
-            <button disabled={!book || !chatText.trim()} onClick={() => void sendCodex()}>
-              Second opinion (Codex)
-            </button>
-          </div>
-        </footer>
+        <header><div><h2>Co-author</h2><p>{claudeDetect.version ?? 'Claude connected'}</p></div>{book && <select value={book.model} onChange={(event) => void changeModel(event.target.value)}>{CLAUDE_MODELS.map((model) => <option key={model} value={model}>{model}</option>)}</select>}</header>
+        <div className="messages">{messages.map((message) => <div key={message.id} className={`message ${message.speaker}`}>{message.speaker === 'claude-tool' ? <span>{message.text}</span> : <>{(message.speaker === 'claude' || message.speaker === 'codex') && <span className="message-avatar" aria-hidden="true">{message.speaker === 'claude' ? 'C' : 'X'}</span>}<span>{message.text}</span></>}</div>)}</div>
+        <footer><textarea value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Ask Claude to revise, expand, or critique this chapter." /><div className="chat-actions"><button disabled={!book || claudeRunning || !chatText.trim()} onClick={() => void sendClaude()}>{claudeRunning ? 'Claude is writing...' : 'Send to Claude'}</button><button disabled={!book || !chatText.trim()} onClick={() => void sendCodex()}>Second opinion (Codex)</button></div></footer>
       </aside>
 
-      {rulesOpen && (
-        <div className="modal-backdrop">
-          <section className="modal rules-modal">
-            <header>
-              <h2>Writing Rules</h2>
-              <button onClick={() => setRulesOpen(false)}>Close</button>
-            </header>
-            <textarea value={rulesText} onChange={(event) => setRulesText(event.target.value)} />
-            <footer>
-              <button onClick={() => void saveRules()}>Save rules</button>
-            </footer>
-          </section>
-        </div>
-      )}
-
-      {diff && (
-        <div className="modal-backdrop">
-          <section className="modal diff-modal">
-            <header>
-              <h2>{diff.chapterTitle}</h2>
-              <button onClick={() => setDiff(null)}>Close</button>
-            </header>
-            <div className="diff-body">
-              {diff.parts.map((part, index) => (
-                <span key={index} className={part.added ? 'added' : part.removed ? 'removed' : ''}>
-                  {part.value}
-                </span>
-              ))}
-            </div>
-          </section>
-        </div>
-      )}
+      {rulesOpen && <div className="modal-backdrop"><section className="modal rules-modal"><header><h2>Writing Rules</h2><button onClick={() => setRulesOpen(false)}>Close</button></header><textarea value={rulesText} onChange={(event) => setRulesText(event.target.value)} /><footer><button onClick={() => void saveRules()}>Save rules</button></footer></section></div>}
+      {diff && <div className="modal-backdrop"><section className="modal diff-modal"><header><h2>{diff.chapterTitle}</h2><button onClick={() => setDiff(null)}>Close</button></header><div className="diff-body">{diff.parts.map((part, index) => <span key={index} className={part.added ? 'added' : part.removed ? 'removed' : ''}>{part.value}</span>)}</div></section></div>}
     </main>
   )
 }
