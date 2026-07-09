@@ -1,23 +1,70 @@
+/* ---------------------------------------------------------------------------
+   BookDesk design tokens — "a writing study".
+   Light = daylight study: warm paper neutrals, fountain-ink blue accent.
+   Dark  = lamplight study: warm charcoal (never pure black), same ink family.
+   Claude keeps a sepia "manuscript" presence in both themes.
+--------------------------------------------------------------------------- */
+
 :root {
-  --bg: #ffffff;
-  --bg-soft: #f7f6f3;
-  --bg-mute: #eeece7;
-  --border: #ddd9d0;
-  --text: #2b2924;
-  --text-dim: #756f63;
-  --accent: #b45309;
-  --accent-soft: #fdf0e1;
-  --claude-accent: #b45309;
-  --claude-soft: #fdf0e1;
-  --codex-accent: #2563eb;
-  --codex-soft: #eaf1fe;
+  --bg: #f3f1ec; /* the desk */
+  --panel: #fbfaf8; /* sidebar / chat surfaces */
+  --sheet: #ffffff; /* the page */
+  --bg-mute: #ebe8e1;
+  --border: #e2ded4;
+  --border-strong: #cbc5b8;
+  --text: #26231d;
+  --text-dim: #7c7668;
+  --accent: #3f5e8c; /* fountain ink */
+  --accent-strong: #33517c;
+  --accent-soft: #e9eef6;
+  --claude-accent: #a06c35; /* manuscript sepia */
+  --claude-soft: #f9f1e6;
+  --claude-border: #e7d5bc;
+  --codex-accent: #4c6b9a;
+  --codex-soft: #eaf0f8;
   --danger: #b42318;
   --added: #1a7f37;
   --added-bg: #dafbe1;
   --removed: #b42318;
   --removed-bg: #ffebe9;
+  --find-bg: rgba(63, 94, 140, 0.18);
+  --find-active-bg: rgba(63, 94, 140, 0.42);
+  --shadow-sheet: 0 1px 2px rgba(38, 35, 29, 0.08), 0 6px 24px rgba(38, 35, 29, 0.07);
+  --shadow-menu: 0 4px 10px rgba(38, 35, 29, 0.1), 0 12px 32px rgba(38, 35, 29, 0.14);
+  --shadow-modal: 0 24px 70px rgba(38, 35, 29, 0.24);
+  --radius: 8px;
   --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-display: 'Iowan Old Style', 'Palatino Linotype', Constantia, Georgia, serif;
   --font-serif: Georgia, 'Iowan Old Style', 'Palatino Linotype', 'Book Antiqua', serif;
+}
+
+[data-theme='dark'] {
+  --bg: #161512;
+  --panel: #1d1b18;
+  --sheet: #24221d;
+  --bg-mute: #26241f;
+  --border: #32302a;
+  --border-strong: #46433a;
+  --text: #e8e4da;
+  --text-dim: #9b9482;
+  --accent: #92abd8;
+  --accent-strong: #aabfe4;
+  --accent-soft: #2a3040;
+  --claude-accent: #c89a62;
+  --claude-soft: #2c251c;
+  --claude-border: #453826;
+  --codex-accent: #8fa8cd;
+  --codex-soft: #242b36;
+  --danger: #e58d84;
+  --added: #7ecf95;
+  --added-bg: #1d3226;
+  --removed: #e58d84;
+  --removed-bg: #3a2320;
+  --find-bg: rgba(146, 171, 216, 0.22);
+  --find-active-bg: rgba(146, 171, 216, 0.45);
+  --shadow-sheet: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 28px rgba(0, 0, 0, 0.35);
+  --shadow-menu: 0 4px 10px rgba(0, 0, 0, 0.45), 0 12px 32px rgba(0, 0, 0, 0.5);
+  --shadow-modal: 0 24px 70px rgba(0, 0, 0, 0.6);
 }
 
 *,
@@ -55,4 +102,37 @@ body {
 
 #root {
   height: 100vh;
+}
+
+/* Quiet, theme-aware scrollbars */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border: 3px solid transparent;
+  border-radius: 8px;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+  border: 3px solid transparent;
+  background-clip: padding-box;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
