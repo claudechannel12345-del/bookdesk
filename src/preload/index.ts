@@ -86,6 +86,14 @@ const api = {
     dismiss: (bookId: string, chapterId: string): Promise<void> =>
       ipcRenderer.invoke('review:dismiss', bookId, chapterId)
   },
+  history: {
+    list: (bookId: string): Promise<{ ts: string; chapterIds: string[] }[]> =>
+      ipcRenderer.invoke('history:list', bookId),
+    read: (bookId: string, ts: string, chapterId: string): Promise<string> =>
+      ipcRenderer.invoke('history:read', bookId, ts, chapterId),
+    restore: (bookId: string, ts: string, chapterId: string): Promise<void> =>
+      ipcRenderer.invoke('history:restore', bookId, ts, chapterId)
+  },
   importDocx: (bookId: string): Promise<{ chaptersCreated: number } | null> =>
     ipcRenderer.invoke('import:docx', bookId),
   onChapterExternalChange: (

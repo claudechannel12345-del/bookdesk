@@ -1,7 +1,12 @@
 import { ipcMain, dialog, BrowserWindow } from 'electron'
 import { diffWords } from 'diff'
 import { store } from './lib/store'
-import { snapshotAll, readSnapshotChapter, restoreChapterFromSnapshot } from './lib/snapshot'
+import {
+  snapshotAll,
+  listSnapshots,
+  readSnapshotChapter,
+  restoreChapterFromSnapshot
+} from './lib/snapshot'
 import {
   ensureSession,
   recordSelfWrite,
@@ -224,6 +229,22 @@ export function registerIpcHandlers(getWindow: () => BrowserWindow | null): void
   ipcMain.handle('review:dismiss', (_e, bookId: string, chapterId: string) => {
     clearReviewEntry(bookId, chapterId)
   })
+
+  // ---- Version history (reuses the pre-Claude-turn snapshots on disk) ----
+  ipcMain.handle('history:list', (_e, bookId: string) => listSnapshots(bookId))
+  ipcMain.handle('history:read', (_e, bookId: string, ts: string, chapterId: string) =>
+    readSnapshotChapter(bookId, ts, chapterId)
+  )
+  ipcMain.handle(
+    'history:restore',
+    async (event, bookId: string, ts: string, chapterId: string) => {
+      await snapshotAll(bookId) // restore is itself undoable via History
+      await restoreChapterFromSnapshot(bookId, ts, chapterId)
+      const restored = await store.readChapter(bookId, chapterId)
+      recordSelfWrite(bookId, chapterId, restored)
+      event.sender.send('chapter:external-change', { bookId, chapterId, content: restored })
+    }
+  )
 
   // ---- Import from Word ----
   ipcMain.handle('import:docx', (_e, bookId: string) => runDocxImportFlow(getWindow(), bookId))
