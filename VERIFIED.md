@@ -260,6 +260,93 @@ Round-2 checks: 14/14 passed across the two runs (3 first-run failures were
 send — and the 2 update-checker asserts, which exposed the real
 `app.getVersion()` bug fixed above).
 
+## Round 3 — dropdown fix, design pass, dark mode, history + find (2026-07-09)
+
+All verified against the production build via Playwright `_electron`,
+screenshots inspected in BOTH themes. 26 automated checks passed.
+
+### 1. Toolbar dropdown clipping — root cause
+
+The old toolbar used native `<select>`s plus `position:absolute` color
+palettes inside the toolbar; after round 2's overflow fixes the absolute
+menus could clip against pane bounds, and native select popups can't be
+themed at all. Replaced every toolbar dropdown (style, font, size, text
+color, highlight, alignment, line spacing) with one `ToolbarMenu` component
+(`src/renderer/src/components/ToolbarMenu.tsx`): a `position:fixed` portal
+into `document.body`, clamped to the window edges, flipping above the
+trigger when out of vertical room, closing on outside-click/Escape/pick.
+Verified: all 7 menus open fully inside the viewport; with the window
+shrunk to 980px the right-most menu clamps at the right edge instead of
+overflowing.
+
+### 2. Design pass ("a writing study")
+
+Full token system in `base.css`: light = daylight study (warm paper
+neutrals, fountain-ink blue accent `#3f5e8c` — deliberately not
+Google-blue), dark = lamplight study (warm charcoal `#161512`, sheet sits
+lighter than the desk, ink accent lightened to `#92abd8`). Claude keeps a
+sepia "manuscript" presence in both. Bookish serif display stack (Iowan Old
+Style / Palatino / Constantia / Georgia — no webfonts, offline app) for
+brand, headings, chapter list, editor prose; system UI for controls.
+Signature: the sidebar is a table of contents — serif numerals + titles
+with right-aligned word counts; Rename/Delete appear on hover. Real SVG
+icon set replaces the old unicode glyphs. Sheet gets a layered
+paper-on-desk shadow. 120–160ms micro-transitions (menus, messages,
+modals), custom theme-aware scrollbars, `prefers-reduced-motion` respected,
+redesigned empty state and setup panel.
+
+Found and fixed while verifying: the scaffold's `* { font-weight: normal }`
+reset had been silently beating the browser's `strong` styling since round
+1 — bold text rendered at weight 400. Restored 700 where prose renders
+(editor page, diff, history preview). Computed weight now 700, confirmed.
+
+### 3. Dark mode
+
+Toggle in the sidebar brand row (sun/moon), persisted in localStorage,
+`data-theme` on the root element, every surface tokenized (sheet, toolbar,
+menus, chat, modals, scrollbars, diff colors, find highlights). Verified:
+toggle flips tokens live, survives a full app relaunch, and highlighted
+text on the dark sheet renders dark ink on the pastel highlight
+(`!important` needed because TipTap emits inline `color: inherit` on
+marks). Known ceiling (`ponytail:` comment in main.css): user-picked text
+colors are absolute hex, so a near-black swatch chosen in light mode stays
+dark on the dark sheet.
+
+### 4a. Version history
+
+Reuses the `.snapshots/` folder (one snapshot before every Claude turn —
+and now before every restore, so restores are undoable). New IPC:
+`history:list` (newest-first, capped at 100), `history:read`,
+`history:restore` (snapshots first, restores the file through the
+self-write path so the watcher doesn't misattribute it, pushes the change
+to the editor). UI: History button in the editor header opens a modal —
+snapshot times down the left (with seconds, so near-simultaneous snapshots
+stay distinguishable), chapter picker + serif preview + "Restore this
+version" on the right. Verified end-to-end: after a real Claude turn the
+snapshot listed, preview matched the pre-turn text exactly, Restore
+returned the file on disk to the pre-turn text byte-for-byte, took a new
+snapshot first (2 → 3 on disk), and the editor live-updated.
+
+### 4b. Find
+
+- Ctrl/Cmd+F opens a find bar under the toolbar: all matches highlighted
+  via a ProseMirror decoration extension (`FindHighlight`), active match
+  stronger, count ("2 of 7"), Enter/Shift+Enter or arrows to navigate,
+  Escape closes and clears. Case-insensitive plain-text match.
+  (ponytail: matches spanning two text nodes — e.g. bold mid-word — are
+  missed; fine for prose.)
+- Sidebar "Search all chapters": debounced, lists matching chapters with
+  match counts and a snippet; clicking jumps to the chapter and opens the
+  find bar pre-filled. Verified both, including the no-matches state.
+
+### Regressions after the CSS/toolbar overhaul — both re-verified
+
+- Real Claude edit turn (sonnet): file changed, review strip appeared
+  ("Claude changed Chapter 1 (+12 / -0 words)"), tool chips rendered.
+- Formatting round-trip: bold + highlight + 2.0 line spacing applied via
+  the NEW menus, autosaved, full relaunch — all survived; the `.md` file
+  stayed plain markdown (`**…**`, no HTML).
+
 ## What's genuinely stubbed / out of scope (by design, not oversight)
 
 - Chapters Claude creates but never registers in `book.json` aren't picked
