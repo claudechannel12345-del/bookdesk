@@ -3,6 +3,7 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { registerIpcHandlers, getActiveBookId, runDocxImportFlow } from './ipcHandlers'
+import { checkForUpdates } from './updateCheck'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -51,6 +52,11 @@ function buildMenu(): void {
           }
         },
         { type: 'separator' },
+        {
+          label: 'Check for Updates…',
+          click: () => void checkForUpdates(true)
+        },
+        { type: 'separator' },
         { role: process.platform === 'darwin' ? 'close' : 'quit' }
       ]
     },
@@ -71,6 +77,8 @@ app.whenReady().then(() => {
   registerIpcHandlers(() => mainWindow)
   buildMenu()
   createWindow()
+  // delayed so it never competes with startup; silent unless a newer release exists
+  setTimeout(() => void checkForUpdates(false), 3000)
 
   app.on('activate', function () {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
