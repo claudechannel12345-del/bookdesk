@@ -64,5 +64,6 @@ export interface DiffResult {
   parts: { value: string; added?: boolean; removed?: boolean }[]
 }
 
-export const CLAUDE_MODELS = ['sonnet[1m]', 'opus[1m]'] as const
+// Sonnet 5 is natively 1M-context; the "[1m]" alias is rejected by headless `claude -p`
+export const CLAUDE_MODELS = ['sonnet', 'opus'] as const
 export type ClaudeModel = (typeof CLAUDE_MODELS)[number]

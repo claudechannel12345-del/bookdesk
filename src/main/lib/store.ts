@@ -36,7 +36,10 @@ function newChapterId(): string {
 
 async function readBook(bookId: string): Promise<BookMeta> {
   const raw = await fs.readFile(bookJsonPath(bookId), 'utf8')
-  return JSON.parse(raw)
+  const book = JSON.parse(raw)
+  // migrate books created when the default was the (broken) [1m] alias
+  if (typeof book.model === 'string') book.model = book.model.replace(/\[1m\]$/, '')
+  return book
 }
 
 async function writeBook(book: BookMeta): Promise<void> {
@@ -77,7 +80,7 @@ async function createBook(title: string): Promise<BookMeta> {
     title,
     chapters: [firstChapter],
     claudeSessionId: null,
-    model: 'sonnet[1m]'
+    model: 'sonnet'
   }
   await writeBook(book)
   return book
