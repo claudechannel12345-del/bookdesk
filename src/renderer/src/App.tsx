@@ -73,6 +73,9 @@ function App(): React.JSX.Element {
   const [setupMessage, setSetupMessage] = useState('')
   const [needsClaudeSetup, setNeedsClaudeSetup] = useState(false)
   const [draggingChapterId, setDraggingChapterId] = useState<string | null>(null)
+  const [renameTarget, setRenameTarget] = useState<{ chapterId: string; title: string } | null>(
+    null
+  )
 
   const bookIdRef = useRef<string | null>(null)
   const selectedChapterIdRef = useRef<string | null>(null)
@@ -80,6 +83,8 @@ function App(): React.JSX.Element {
   const loadingRef = useRef(false)
   const saveTimerRef = useRef<number | null>(null)
   const saveNowRef = useRef<() => Promise<void>>(async () => {})
+  const messagesRef = useRef<HTMLDivElement | null>(null)
+  const stickToBottomRef = useRef(true)
 
   const editor = useEditor({
     extensions: [
@@ -213,6 +218,12 @@ function App(): React.JSX.Element {
   )
 
   useEffect(() => {
+    // auto-scroll to newest message unless the user scrolled up to read history
+    const el = messagesRef.current
+    if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
+  }, [messages])
+
+  useEffect(() => {
     void refreshBooks()
     void window.api.detect.claude().then(setClaudeDetect)
     void window.api.detect.codex().then(setCodexDetect)
@@ -269,20 +280,24 @@ function App(): React.JSX.Element {
 
   async function addChapter(): Promise<void> {
     if (!book) return
-    const title = window.prompt('Chapter title', `Chapter ${book.chapters.length + 1}`)
-    if (!title) return
-    const nextBook = await window.api.chapters.add(book.id, title)
+    // window.prompt throws in Electron — add with a default title, rename after
+    const nextBook = await window.api.chapters.add(book.id, `Chapter ${book.chapters.length + 1}`)
     setBook(nextBook)
     await loadWordCounts(nextBook)
     await loadChapter(nextBook.chapters[nextBook.chapters.length - 1].id)
   }
 
-  async function renameChapter(chapterId: string): Promise<void> {
+  function renameChapter(chapterId: string): void {
     if (!book) return
     const chapter = book.chapters.find((item) => item.id === chapterId)
-    const title = window.prompt('Chapter title', chapter?.title ?? '')
-    if (!title) return
-    setBook(await window.api.chapters.rename(book.id, chapterId, title))
+    setRenameTarget({ chapterId, title: chapter?.title ?? '' })
+  }
+
+  async function saveRename(): Promise<void> {
+    if (!book || !renameTarget) return
+    const title = renameTarget.title.trim()
+    if (title) setBook(await window.api.chapters.rename(book.id, renameTarget.chapterId, title))
+    setRenameTarget(null)
   }
 
   async function deleteChapter(chapterId: string): Promise<void> {
@@ -485,7 +500,7 @@ function App(): React.JSX.Element {
                     <span>{chapterLabel(index, chapter.title)}</span>
                     <small>{(chapterWords[chapter.id] ?? 0).toLocaleString()} words</small>
                   </button>
-                  <button title="Rename chapter" onClick={() => void renameChapter(chapter.id)}>
+                  <button title="Rename chapter" onClick={() => renameChapter(chapter.id)}>
                     Rename
                   </button>
                   <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>
@@ -800,7 +815,14 @@ function App(): React.JSX.Element {
             </select>
           )}
         </header>
-        <div className="messages">
+        <div
+          className="messages"
+          ref={messagesRef}
+          onScroll={(event) => {
+            const el = event.currentTarget
+            stickToBottomRef.current = el.scrollTop + el.clientHeight >= el.scrollHeight - 40
+          }}
+        >
           {messages.map((message) => (
             <div key={message.id} className={`message ${message.speaker}`}>
               {message.speaker === 'claude-tool' ? (
@@ -848,6 +870,28 @@ function App(): React.JSX.Element {
             <textarea value={rulesText} onChange={(event) => setRulesText(event.target.value)} />
             <footer>
               <button onClick={() => void saveRules()}>Save rules</button>
+            </footer>
+          </section>
+        </div>
+      )}
+      {renameTarget && (
+        <div className="modal-backdrop">
+          <section className="modal rename-modal">
+            <header>
+              <h2>Rename chapter</h2>
+              <button onClick={() => setRenameTarget(null)}>Close</button>
+            </header>
+            <input
+              autoFocus
+              value={renameTarget.title}
+              aria-label="Chapter title"
+              onChange={(event) => setRenameTarget({ ...renameTarget, title: event.target.value })}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') void saveRename()
+              }}
+            />
+            <footer>
+              <button onClick={() => void saveRename()}>Save</button>
             </footer>
           </section>
         </div>

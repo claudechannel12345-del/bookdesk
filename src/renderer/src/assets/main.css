@@ -17,7 +17,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, textarea:focus-
 select, input { height: 34px; padding: 0 10px; }
 textarea { resize: none; padding: 10px; }
 
-.app-shell { display: grid; grid-template-columns: 270px minmax(480px, 1fr) 340px; height: 100vh; background: #f8f9fa; }
+/* grid-template-rows pins the single row to the window height; without it the
+   implicit auto row grows with content and every pane clips past the bottom */
+.app-shell { display: grid; grid-template-columns: 270px minmax(480px, 1fr) 340px; grid-template-rows: minmax(0, 1fr); height: 100vh; background: #f8f9fa; }
+.sidebar, .chat-pane, .editor-pane { min-height: 0; }
 .sidebar, .chat-pane { display: flex; min-width: 0; flex-direction: column; background: #fff; }
 .sidebar { border-right: 1px solid #dadce0; }
 .chat-pane { border-left: 1px solid #dadce0; }
@@ -64,7 +67,7 @@ textarea { resize: none; padding: 10px; }
 .conflict-banner { grid-template-columns: 1fr auto auto; align-items: center; }
 .review-strip { background: #fff; }
 .review-item { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; color: var(--text-dim); font-size: 13px; }
-.editor-wrap { min-height: 0; flex: 1; overflow: auto; padding: 34px 44px 26px; }
+.editor-wrap { min-height: 0; flex: 1; overflow: auto; padding: 34px 44px 40vh; } /* docs-style: generous bottom room so the caret never sits at the window edge */
 .editor-page { width: min(816px, 100%); min-height: calc(100vh - 230px); margin: 0 auto; padding: 72px 78px; border: 1px solid #dadce0; background: #fff; box-shadow: 0 1px 3px rgba(60, 64, 67, 0.3); font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.5; }
 .editor-page h1, .editor-page h2, .editor-page h3 { margin: 1.2em 0 0.45em; font-weight: 700; line-height: 1.25; }
 .editor-page h1 { font-size: 26pt; }.editor-page h2 { font-size: 19pt; }.editor-page h3 { font-size: 15pt; }
@@ -84,6 +87,7 @@ textarea { resize: none; padding: 10px; }
 .chat-pane footer { display: grid; gap: 10px; border-top: 1px solid #e7e9ec; }.chat-pane footer textarea { height: 92px; }.chat-actions button:first-child { border-color: #1a73e8; background: #1a73e8; color: #fff; }
 
 .setup { background: #f1f3f4; }.setup-panel, .modal { width: min(560px, 100%); border: 1px solid var(--border); border-radius: 8px; background: #fff; box-shadow: 0 20px 60px rgba(41, 37, 31, 0.13); }.setup-panel { display: grid; gap: 14px; padding: 28px; }.setup-panel h1 { margin: 0; font-weight: 700; }.setup-panel pre { overflow: auto; padding: 12px; border-radius: 6px; background: #27231f; color: #fff; }.setup-actions { display: flex; gap: 10px; }.setup-message { color: var(--text-dim); }
+.rename-modal input { margin: 16px; }
 .modal-backdrop { position: fixed; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(43, 41, 36, 0.28); }.modal { display: grid; max-height: calc(100vh - 48px); overflow: hidden; }.modal header, .modal footer { padding: 14px 16px; border-bottom: 1px solid var(--border); }.modal footer { border-top: 1px solid var(--border); border-bottom: 0; }.rules-modal textarea { height: min(62vh, 560px); border: 0; border-radius: 0; font-family: var(--font-ui); line-height: 1.55; }.diff-modal { width: min(820px, 100%); }.diff-body { overflow: auto; padding: 22px; font-family: var(--font-serif); font-size: 18px; line-height: 1.75; white-space: pre-wrap; }.diff-body .added { background: var(--added-bg); color: var(--added); }.diff-body .removed { background: var(--removed-bg); color: var(--removed); text-decoration: line-through; }
 
 @media (max-width: 1120px) { .app-shell { grid-template-columns: 225px minmax(380px, 1fr) 290px; }.editor-wrap { padding: 24px; }.editor-page { padding: 54px 48px; } }
