@@ -8,9 +8,8 @@ function appVersion(): string {
   return __APP_VERSION__
 }
 
-// ponytail: set to 'owner/repo' once the GitHub repo exists; empty string disables all checks.
 // BOOKDESK_UPDATE_REPO env var overrides it (used by tests; harmless otherwise).
-export const UPDATE_REPO = process.env.BOOKDESK_UPDATE_REPO || ''
+export const UPDATE_REPO = process.env.BOOKDESK_UPDATE_REPO || 'claudechannel12345-del/bookdesk'
 
 function isNewer(latest: string, current: string): boolean {
   const a = latest.split('.').map(Number)
