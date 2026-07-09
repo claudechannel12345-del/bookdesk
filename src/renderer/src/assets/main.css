@@ -66,9 +66,12 @@ button.primary:hover:not(:disabled) { border-color: var(--accent-strong); backgr
 .brand h1 { margin: 0; font-family: var(--font-display); font-size: 20px; font-weight: 700; letter-spacing: 0.01em; }
 .brand p, .chat-pane header p { margin: 2px 0 0; color: var(--text-dim); font-size: 12px; }
 
-.book-picker { display: grid; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
-.book-picker select { width: 100%; }
-.new-book { display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+/* minmax(0, …) tracks: a plain 1fr/auto track sizes to the widest option text
+   (grid items have min-width:auto), pushing the select past the sidebar edge */
+.book-picker { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.book-picker select { width: 100%; min-width: 0; text-overflow: ellipsis; }
+.new-book { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; }
+.new-book input { min-width: 0; }
 
 .sidebar-search { display: flex; position: relative; align-items: center; gap: 4px; margin: 12px 16px 2px; }
 .sidebar-search input { width: 100%; padding-left: 32px; background: var(--bg-mute); border-color: transparent; }

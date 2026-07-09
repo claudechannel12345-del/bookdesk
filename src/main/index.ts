@@ -11,6 +11,8 @@ function createWindow(): void {
   mainWindow = new BrowserWindow({
     width: 1280,
     height: 800,
+    minWidth: 940, // three-pane grid minimum (230 + 380 + 300 + borders)
+    minHeight: 560,
     show: false,
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),

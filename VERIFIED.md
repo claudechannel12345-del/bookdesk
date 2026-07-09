@@ -347,6 +347,21 @@ snapshot first (2 → 3 on disk), and the editor live-updated.
   the NEW menus, autosaved, full relaunch — all survived; the `.md` file
   stayed plain markdown (`**…**`, no HTML).
 
+### Round-3 follow-up: sidebar dropdown trigger overflow (owner report)
+
+The control was the sidebar's **book picker `<select>`** (and the New-book
+input row next to it): `.book-picker` is a CSS grid, and grid items'
+automatic `min-width: auto` sizes the track to the widest book title, so a
+long title pushed the select past the sidebar's right edge (visible in
+screenshots since round 1). Fixed with `minmax(0, 1fr)` tracks +
+`min-width: 0` + `text-overflow: ellipsis` on the select. Audited every
+button/select/input/textarea in all three panes against its pane's right
+edge at 1280/1024/860px in both themes with a deliberately long book
+title — zero overflows (7/7 checks). The audit also showed the three-pane
+grid's minimum (~910px) clips the chat pane in a smaller window, so the
+BrowserWindow now has `minWidth: 940` / `minHeight: 560` — verified the
+window clamps and the shell fits exactly.
+
 ## What's genuinely stubbed / out of scope (by design, not oversight)
 
 - Chapters Claude creates but never registers in `book.json` aren't picked
