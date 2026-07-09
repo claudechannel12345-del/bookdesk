@@ -10,7 +10,32 @@ import Underline from '@tiptap/extension-underline'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import { Markdown } from 'tiptap-markdown'
-import { DocumentLayout, FontSize } from './editorExtensions'
+import { DocumentLayout, FontSize, FindHighlight, type FindRange } from './editorExtensions'
+import { ToolbarMenu } from './components/ToolbarMenu'
+import { HistoryModal } from './components/HistoryModal'
+import {
+  IcUndo,
+  IcRedo,
+  IcAlignLeft,
+  IcAlignCenter,
+  IcAlignRight,
+  IcAlignJustify,
+  IcBullets,
+  IcNumbers,
+  IcOutdent,
+  IcIndent,
+  IcQuote,
+  IcClearFormat,
+  IcSun,
+  IcMoon,
+  IcSearch,
+  IcHistory,
+  IcClose,
+  IcChevronDown,
+  IcArrowUp,
+  IcArrowDown,
+  IcBook
+} from './components/icons'
 import type {
   AgentEvent,
   BookMeta,
@@ -41,10 +66,6 @@ function wordCount(text: string): number {
   return text.split(/\s+/).filter(Boolean).length
 }
 
-function chapterLabel(index: number, title: string): string {
-  return `${index + 1}. ${title}`
-}
-
 function markdownOf(editor: Editor): string {
   return (editor.storage.markdown as { getMarkdown: () => string }).getMarkdown()
 }
@@ -52,6 +73,28 @@ function markdownOf(editor: Editor): string {
 function restoreDocument(editor: Editor, document: Record<string, unknown>): void {
   const next = editor.schema.nodeFromJSON(document as unknown as JSONContent)
   editor.view.dispatch(editor.state.tr.replaceWith(0, editor.state.doc.content.size, next.content))
+}
+
+/** Plain-text find: match positions inside single text nodes (case-insensitive). */
+function computeFindMatches(editor: Editor, query: string): FindRange[] {
+  const q = query.toLowerCase()
+  const out: FindRange[] = []
+  if (!q) return out
+  editor.state.doc.descendants((node, pos) => {
+    if (!node.isText || !node.text) return
+    // ponytail: misses matches that span two text nodes (e.g. bold mid-word); fine for prose
+    const text = node.text.toLowerCase()
+    let i = text.indexOf(q)
+    while (i !== -1) {
+      out.push({ from: pos + i, to: pos + i + q.length })
+      i = text.indexOf(q, i + q.length)
+    }
+  })
+  return out
+}
+
+function stripMarkdown(markdown: string): string {
+  return markdown.replace(/^#{1,6}\s+/gm, '').replace(/[`*_~>]/g, '')
 }
 
 function App(): React.JSX.Element {
@@ -76,6 +119,17 @@ function App(): React.JSX.Element {
   const [renameTarget, setRenameTarget] = useState<{ chapterId: string; title: string } | null>(
     null
   )
+  const [theme, setTheme] = useState<string>(
+    () => window.localStorage.getItem('bookdesk-theme') ?? 'light'
+  )
+  const [findOpen, setFindOpen] = useState(false)
+  const [findQuery, setFindQuery] = useState('')
+  const [findState, setFindState] = useState({ active: 0, total: 0 })
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const [tocQuery, setTocQuery] = useState('')
+  const [tocResults, setTocResults] = useState<
+    { chapterId: string; title: string; count: number; snippet: string }[] | null
+  >(null)
 
   const bookIdRef = useRef<string | null>(null)
   const selectedChapterIdRef = useRef<string | null>(null)
@@ -85,6 +139,7 @@ function App(): React.JSX.Element {
   const saveNowRef = useRef<() => Promise<void>>(async () => {})
   const messagesRef = useRef<HTMLDivElement | null>(null)
   const stickToBottomRef = useRef(true)
+  const findInputRef = useRef<HTMLInputElement | null>(null)
 
   const editor = useEditor({
     extensions: [
@@ -97,6 +152,7 @@ function App(): React.JSX.Element {
       Underline,
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       DocumentLayout,
+      FindHighlight,
       Link.configure({ openOnClick: false }),
       Markdown.configure({ html: false })
     ],
@@ -222,6 +278,91 @@ function App(): React.JSX.Element {
     const el = messagesRef.current
     if (el && stickToBottomRef.current) el.scrollTop = el.scrollHeight
   }, [messages])
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme
+    window.localStorage.setItem('bookdesk-theme', theme)
+  }, [theme])
+
+  // ---- Find in chapter ----
+  const applyFind = useCallback(
+    (query: string, active: number, scroll: boolean) => {
+      if (!editor) return
+      const matches = computeFindMatches(editor, query)
+      const index = matches.length
+        ? ((active % matches.length) + matches.length) % matches.length
+        : 0
+      const storage = editor.storage.findHighlight as { ranges: FindRange[]; active: number }
+      storage.ranges = matches
+      storage.active = matches.length ? index : -1
+      editor.view.dispatch(editor.state.tr) // repaint decorations
+      setFindState({ active: matches.length ? index : 0, total: matches.length })
+      if (scroll && matches.length) {
+        editor.chain().setTextSelection(matches[index]).scrollIntoView().run()
+      }
+    },
+    [editor]
+  )
+
+  const closeFind = useCallback(() => {
+    setFindOpen(false)
+    if (!editor) return
+    const storage = editor.storage.findHighlight as { ranges: FindRange[]; active: number }
+    storage.ranges = []
+    storage.active = -1
+    editor.view.dispatch(editor.state.tr)
+    editor.commands.focus()
+  }, [editor])
+
+  useEffect(() => {
+    if (findOpen) applyFind(findQuery, 0, true)
+  }, [findOpen, findQuery, selectedChapterId, applyFind])
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'f') {
+        event.preventDefault()
+        setFindOpen(true)
+        window.setTimeout(() => findInputRef.current?.select(), 0)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
+
+  // ---- Search across all chapters (sidebar) ----
+  useEffect(() => {
+    const query = tocQuery.trim().toLowerCase()
+    if (!book || query.length < 2) {
+      setTocResults(null)
+      return
+    }
+    const bookAtStart = book
+    const timer = window.setTimeout(async () => {
+      const results: { chapterId: string; title: string; count: number; snippet: string }[] = []
+      for (const chapter of bookAtStart.chapters) {
+        const text = stripMarkdown(await window.api.chapters.read(bookAtStart.id, chapter.id))
+        const lower = text.toLowerCase()
+        let count = 0
+        let i = lower.indexOf(query)
+        const first = i
+        while (i !== -1) {
+          count++
+          i = lower.indexOf(query, i + query.length)
+        }
+        if (count > 0) {
+          const start = Math.max(0, first - 32)
+          const snippet =
+            (start > 0 ? '…' : '') +
+            text.slice(start, first + query.length + 48).replace(/\s+/g, ' ') +
+            '…'
+          results.push({ chapterId: chapter.id, title: chapter.title, count, snippet })
+        }
+      }
+      setTocResults(results)
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [tocQuery, book])
 
   useEffect(() => {
     void refreshBooks()
@@ -427,6 +568,41 @@ function App(): React.JSX.Element {
         .run()
   }
 
+  function currentStyleLabel(): string {
+    for (const level of [1, 2, 3] as const)
+      if (editor?.isActive('heading', { level })) return `Heading ${level}`
+    return 'Normal text'
+  }
+
+  function currentFontLabel(): string {
+    const family = (editor?.getAttributes('textStyle').fontFamily as string) ?? ''
+    return FONT_FAMILIES.find(([, value]) => value === family)?.[0] ?? 'Georgia'
+  }
+
+  function currentSizeLabel(): string {
+    const size = (editor?.getAttributes('textStyle').fontSize as string) ?? ''
+    return size ? size.replace('pt', '') : '12'
+  }
+
+  function currentAlignIcon(): React.JSX.Element {
+    if (editor?.isActive({ textAlign: 'center' })) return <IcAlignCenter />
+    if (editor?.isActive({ textAlign: 'right' })) return <IcAlignRight />
+    if (editor?.isActive({ textAlign: 'justify' })) return <IcAlignJustify />
+    return <IcAlignLeft />
+  }
+
+  async function jumpToSearchResult(chapterId: string): Promise<void> {
+    await chooseChapter(chapterId)
+    setFindQuery(tocQuery.trim())
+    setFindOpen(true)
+  }
+
+  async function historyRestored(chapterId: string): Promise<void> {
+    setHistoryOpen(false)
+    if (book) await loadWordCounts(book)
+    if (chapterId === selectedChapterIdRef.current) await loadChapter(chapterId)
+  }
+
   if (!claudeDetect.found || needsClaudeSetup) {
     return (
       <main className="setup">
@@ -457,8 +633,23 @@ function App(): React.JSX.Element {
     <main className="app-shell">
       <aside className="sidebar">
         <div className="brand">
-          <h1>BookDesk</h1>
-          <p>{totalWords.toLocaleString()} words</p>
+          <div className="brand-mark">
+            <span className="brand-glyph" aria-hidden="true">
+              <IcBook />
+            </span>
+            <div>
+              <h1>BookDesk</h1>
+              <p>{totalWords.toLocaleString()} words in this book</p>
+            </div>
+          </div>
+          <button
+            className="icon-button"
+            title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+          >
+            {theme === 'dark' ? <IcSun /> : <IcMoon />}
+          </button>
         </div>
         <div className="book-picker">
           <select value={book?.id ?? ''} onChange={(event) => void openBook(event.target.value)}>
@@ -482,33 +673,85 @@ function App(): React.JSX.Element {
         </div>
         {book && (
           <>
-            <div className="sidebar-row">
-              <h2>Chapters</h2>
-              <button onClick={() => void addChapter()}>Add</button>
-            </div>
-            <ol className="chapter-list">
-              {book.chapters.map((chapter, index) => (
-                <li
-                  key={chapter.id}
-                  draggable
-                  onDragStart={() => setDraggingChapterId(chapter.id)}
-                  onDragOver={(event) => event.preventDefault()}
-                  onDrop={() => void moveChapter(chapter.id)}
-                  className={chapter.id === selectedChapterId ? 'active' : ''}
+            <div className="sidebar-search">
+              <span className="sidebar-search-icon" aria-hidden="true">
+                <IcSearch />
+              </span>
+              <input
+                value={tocQuery}
+                onChange={(event) => setTocQuery(event.target.value)}
+                placeholder="Search all chapters"
+                aria-label="Search all chapters"
+              />
+              {tocQuery && (
+                <button
+                  className="icon-button"
+                  title="Clear search"
+                  aria-label="Clear search"
+                  onClick={() => setTocQuery('')}
                 >
-                  <button className="chapter-main" onClick={() => void chooseChapter(chapter.id)}>
-                    <span>{chapterLabel(index, chapter.title)}</span>
-                    <small>{(chapterWords[chapter.id] ?? 0).toLocaleString()} words</small>
+                  <IcClose />
+                </button>
+              )}
+            </div>
+            {tocResults !== null ? (
+              <div className="search-results">
+                {tocResults.length === 0 && (
+                  <p className="search-none">No chapters mention “{tocQuery.trim()}”.</p>
+                )}
+                {tocResults.map((result) => (
+                  <button
+                    key={result.chapterId}
+                    className="search-result"
+                    onClick={() => void jumpToSearchResult(result.chapterId)}
+                  >
+                    <span className="search-result-title">
+                      {result.title}
+                      <small>
+                        {result.count} {result.count === 1 ? 'match' : 'matches'}
+                      </small>
+                    </span>
+                    <span className="search-result-snippet">{result.snippet}</span>
                   </button>
-                  <button title="Rename chapter" onClick={() => renameChapter(chapter.id)}>
-                    Rename
-                  </button>
-                  <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>
-                    Delete
-                  </button>
-                </li>
-              ))}
-            </ol>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="sidebar-row">
+                  <h2>Chapters</h2>
+                  <button onClick={() => void addChapter()}>Add</button>
+                </div>
+                <ol className="chapter-list">
+                  {book.chapters.map((chapter, index) => (
+                    <li
+                      key={chapter.id}
+                      draggable
+                      onDragStart={() => setDraggingChapterId(chapter.id)}
+                      onDragOver={(event) => event.preventDefault()}
+                      onDrop={() => void moveChapter(chapter.id)}
+                      className={chapter.id === selectedChapterId ? 'active' : ''}
+                    >
+                      <button
+                        className="chapter-main"
+                        onClick={() => void chooseChapter(chapter.id)}
+                      >
+                        <span className="chapter-number" aria-hidden="true">
+                          {index + 1}
+                        </span>
+                        <span className="chapter-title">{chapter.title}</span>
+                        <small>{(chapterWords[chapter.id] ?? 0).toLocaleString()}</small>
+                      </button>
+                      <button title="Rename chapter" onClick={() => renameChapter(chapter.id)}>
+                        Rename
+                      </button>
+                      <button title="Delete chapter" onClick={() => void deleteChapter(chapter.id)}>
+                        Delete
+                      </button>
+                    </li>
+                  ))}
+                </ol>
+              </>
+            )}
             <button className="rules-button" onClick={() => void openRules()}>
               Writing Rules
             </button>
@@ -527,7 +770,27 @@ function App(): React.JSX.Element {
                 onBlur={() => void saveBookTitle()}
                 aria-label="Document title"
               />
-              <span>{selectedChapter.title}</span>
+              <span className="chapter-crumb">{selectedChapter.title}</span>
+              <span className="header-spacer" />
+              <button
+                className="icon-button"
+                title="Find in chapter (Ctrl/Cmd+F)"
+                aria-label="Find in chapter"
+                onClick={() => {
+                  setFindOpen(true)
+                  window.setTimeout(() => findInputRef.current?.select(), 0)
+                }}
+              >
+                <IcSearch />
+              </button>
+              <button
+                className="icon-button"
+                title="Version history"
+                aria-label="Version history"
+                onClick={() => setHistoryOpen(true)}
+              >
+                <IcHistory />
+              </button>
             </header>
             <div className="docs-toolbar" aria-label="Document formatting toolbar">
               <div className="toolbar-group">
@@ -536,73 +799,83 @@ function App(): React.JSX.Element {
                   aria-label="Undo"
                   onClick={() => editor?.chain().focus().undo().run()}
                 >
-                  ↶
+                  <IcUndo />
                 </button>
                 <button
                   title="Redo (Ctrl/Cmd+Y)"
                   aria-label="Redo"
                   onClick={() => editor?.chain().focus().redo().run()}
                 >
-                  ↷
+                  <IcRedo />
                 </button>
               </div>
-              <div className="toolbar-group toolbar-selects">
-                <select
+              <div className="toolbar-group">
+                <ToolbarMenu
                   title="Text style"
-                  aria-label="Text style"
-                  defaultValue=""
-                  onChange={(event) => {
-                    if (event.target.value) setStyle(event.target.value)
-                    event.target.value = ''
-                  }}
-                >
-                  <option value="" disabled>
-                    Normal text
-                  </option>
-                  <option value="normal">Normal text</option>
-                  <option value="title">Title</option>
-                  <option value="heading-1">Heading 1</option>
-                  <option value="heading-2">Heading 2</option>
-                  <option value="heading-3">Heading 3</option>
-                </select>
-                <select
-                  title="Font"
-                  aria-label="Font family"
-                  defaultValue=""
-                  onChange={(event) =>
-                    editor?.chain().focus().setFontFamily(event.target.value).run()
+                  className="menu-trigger style-trigger"
+                  trigger={
+                    <>
+                      {currentStyleLabel()} <IcChevronDown />
+                    </>
                   }
                 >
-                  <option value="" disabled>
-                    Font
-                  </option>
-                  {FONT_FAMILIES.map(([label, value]) => (
-                    <option key={label} value={value}>
+                  {[
+                    ['normal', 'Normal text'],
+                    ['title', 'Title'],
+                    ['heading-1', 'Heading 1'],
+                    ['heading-2', 'Heading 2'],
+                    ['heading-3', 'Heading 3']
+                  ].map(([value, label]) => (
+                    <button key={value} className="menu-item" onClick={() => setStyle(value)}>
                       {label}
-                    </option>
+                    </button>
                   ))}
-                </select>
-                <select
-                  title="Font size"
-                  aria-label="Font size"
-                  defaultValue=""
-                  onChange={(event) =>
-                    editor
-                      ?.chain()
-                      .focus()
-                      .setMark('textStyle', { fontSize: event.target.value })
-                      .run()
+                </ToolbarMenu>
+                <ToolbarMenu
+                  title="Font family"
+                  className="menu-trigger font-trigger"
+                  trigger={
+                    <>
+                      {currentFontLabel()} <IcChevronDown />
+                    </>
                   }
                 >
-                  <option value="" disabled>
-                    Size
-                  </option>
-                  {[10, 11, 12, 14, 16, 18, 24, 32].map((size) => (
-                    <option key={size} value={`${size}pt`}>
-                      {size}
-                    </option>
+                  {FONT_FAMILIES.map(([label, value]) => (
+                    <button
+                      key={label}
+                      className="menu-item"
+                      style={{ fontFamily: value }}
+                      onClick={() => editor?.chain().focus().setFontFamily(value).run()}
+                    >
+                      {label}
+                    </button>
                   ))}
-                </select>
+                </ToolbarMenu>
+                <ToolbarMenu
+                  title="Font size"
+                  className="menu-trigger size-trigger"
+                  trigger={
+                    <>
+                      {currentSizeLabel()} <IcChevronDown />
+                    </>
+                  }
+                >
+                  {[10, 11, 12, 14, 16, 18, 24, 32].map((size) => (
+                    <button
+                      key={size}
+                      className="menu-item"
+                      onClick={() =>
+                        editor
+                          ?.chain()
+                          .focus()
+                          .setMark('textStyle', { fontSize: `${size}pt` })
+                          .run()
+                      }
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </ToolbarMenu>
               </div>
               <div className="toolbar-group">
                 <button
@@ -638,11 +911,16 @@ function App(): React.JSX.Element {
                   <s>S</s>
                 </button>
               </div>
-              <div className="toolbar-group color-tools">
-                <details>
-                  <summary title="Text color" aria-label="Text color">
-                    A<span className="color-bar text-color" />
-                  </summary>
+              <div className="toolbar-group">
+                <ToolbarMenu
+                  title="Text color"
+                  className="menu-trigger"
+                  trigger={
+                    <>
+                      A<span className="color-bar text-color" />
+                    </>
+                  }
+                >
                   <div className="color-palette">
                     {TEXT_COLORS.map((color) => (
                       <button
@@ -651,96 +929,124 @@ function App(): React.JSX.Element {
                         aria-label={`Text color ${color}`}
                         className="color-swatch"
                         style={{ background: color }}
-                        onMouseDown={(event) => event.preventDefault()}
                         onClick={() => editor?.chain().focus().setColor(color).run()}
                       />
                     ))}
                   </div>
-                </details>
-                <details>
-                  <summary title="Highlight color" aria-label="Highlight color">
-                    ▰<span className="color-bar highlight-color" />
-                  </summary>
+                </ToolbarMenu>
+                <ToolbarMenu
+                  title="Highlight color"
+                  className="menu-trigger"
+                  trigger={
+                    <>
+                      <span className="highlight-glyph">H</span>
+                      <span className="color-bar highlight-color" />
+                    </>
+                  }
+                >
                   <div className="color-palette">
                     {HIGHLIGHT_COLORS.map((color) => (
                       <button
                         key={color}
-                        title={color}
+                        title={color === '#ffffff' ? 'No highlight' : color}
                         aria-label={`Highlight ${color}`}
                         className="color-swatch"
                         style={{ background: color }}
-                        onMouseDown={(event) => event.preventDefault()}
-                        onClick={() => editor?.chain().focus().toggleHighlight({ color }).run()}
+                        onClick={() =>
+                          color === '#ffffff'
+                            ? editor?.chain().focus().unsetHighlight().run()
+                            : editor?.chain().focus().toggleHighlight({ color }).run()
+                        }
                       />
                     ))}
                   </div>
-                </details>
+                </ToolbarMenu>
               </div>
-              <div className="toolbar-group toolbar-selects">
-                <select
+              <div className="toolbar-group">
+                <ToolbarMenu
                   title="Alignment"
-                  aria-label="Alignment"
-                  defaultValue="left"
-                  onChange={(event) =>
-                    editor?.chain().focus().setTextAlign(event.target.value).run()
+                  className="menu-trigger"
+                  trigger={
+                    <>
+                      {currentAlignIcon()} <IcChevronDown />
+                    </>
                   }
                 >
-                  <option value="left">⇤</option>
-                  <option value="center">≡</option>
-                  <option value="right">⇥</option>
-                  <option value="justify">☰</option>
-                </select>
-                <select
-                  title="Line spacing"
-                  aria-label="Line spacing"
-                  defaultValue=""
-                  onChange={(event) => setLineSpacing(event.target.value)}
-                >
-                  <option value="" disabled>
-                    Spacing
-                  </option>
-                  {['1.0', '1.15', '1.5', '2.0'].map((spacing) => (
-                    <option key={spacing} value={spacing}>
-                      {spacing}
-                    </option>
+                  {(
+                    [
+                      ['left', 'Left', <IcAlignLeft key="l" />],
+                      ['center', 'Center', <IcAlignCenter key="c" />],
+                      ['right', 'Right', <IcAlignRight key="r" />],
+                      ['justify', 'Justify', <IcAlignJustify key="j" />]
+                    ] as const
+                  ).map(([value, label, icon]) => (
+                    <button
+                      key={value}
+                      className="menu-item"
+                      onClick={() => editor?.chain().focus().setTextAlign(value).run()}
+                    >
+                      {icon} {label}
+                    </button>
                   ))}
-                </select>
+                </ToolbarMenu>
+                <ToolbarMenu
+                  title="Line spacing"
+                  className="menu-trigger"
+                  trigger={
+                    <>
+                      ↕ <IcChevronDown />
+                    </>
+                  }
+                >
+                  {['1.0', '1.15', '1.5', '2.0'].map((spacing) => (
+                    <button
+                      key={spacing}
+                      className="menu-item"
+                      onClick={() => setLineSpacing(spacing)}
+                    >
+                      {spacing}
+                    </button>
+                  ))}
+                </ToolbarMenu>
               </div>
               <div className="toolbar-group">
                 <button
                   title="Bullet list"
                   aria-label="Bullet list"
+                  className={editor?.isActive('bulletList') ? 'is-active' : ''}
                   onClick={() => editor?.chain().focus().toggleBulletList().run()}
                 >
-                  •≡
+                  <IcBullets />
                 </button>
                 <button
                   title="Numbered list"
                   aria-label="Numbered list"
+                  className={editor?.isActive('orderedList') ? 'is-active' : ''}
                   onClick={() => editor?.chain().focus().toggleOrderedList().run()}
                 >
-                  1≡
+                  <IcNumbers />
                 </button>
                 <button
                   title="Decrease indent"
                   aria-label="Decrease indent"
                   onClick={() => changeIndent(-1)}
                 >
-                  ⇤
+                  <IcOutdent />
                 </button>
                 <button
                   title="Increase indent"
                   aria-label="Increase indent"
                   onClick={() => changeIndent(1)}
                 >
-                  ⇥
+                  <IcIndent />
                 </button>
                 <button
                   title="Blockquote"
                   aria-label="Blockquote"
+                  className={editor?.isActive('blockquote') ? 'is-active' : ''}
                   onClick={() => editor?.chain().focus().toggleBlockquote().run()}
                 >
-                  ❝
+                  <IcQuote />
                 </button>
                 <button
                   title="Clear formatting"
@@ -749,10 +1055,59 @@ function App(): React.JSX.Element {
                     editor?.chain().focus().unsetAllMarks().clearNodes().setTextAlign('left').run()
                   }
                 >
-                  Tx
+                  <IcClearFormat />
                 </button>
               </div>
             </div>
+            {findOpen && (
+              <div className="find-bar">
+                <span className="find-icon" aria-hidden="true">
+                  <IcSearch />
+                </span>
+                <input
+                  ref={findInputRef}
+                  autoFocus
+                  value={findQuery}
+                  placeholder="Find in this chapter"
+                  aria-label="Find in this chapter"
+                  onChange={(event) => setFindQuery(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Escape') closeFind()
+                    if (event.key === 'Enter')
+                      applyFind(findQuery, findState.active + (event.shiftKey ? -1 : 1), true)
+                  }}
+                />
+                <span className="find-count">
+                  {findState.total ? `${findState.active + 1} of ${findState.total}` : 'No matches'}
+                </span>
+                <button
+                  className="icon-button"
+                  title="Previous match (Shift+Enter)"
+                  aria-label="Previous match"
+                  disabled={!findState.total}
+                  onClick={() => applyFind(findQuery, findState.active - 1, true)}
+                >
+                  <IcArrowUp />
+                </button>
+                <button
+                  className="icon-button"
+                  title="Next match (Enter)"
+                  aria-label="Next match"
+                  disabled={!findState.total}
+                  onClick={() => applyFind(findQuery, findState.active + 1, true)}
+                >
+                  <IcArrowDown />
+                </button>
+                <button
+                  className="icon-button"
+                  title="Close (Esc)"
+                  aria-label="Close find"
+                  onClick={closeFind}
+                >
+                  <IcClose />
+                </button>
+              </div>
+            )}
             {conflictText && (
               <div className="conflict-banner">
                 <span>Claude edited this chapter.</span>
@@ -793,8 +1148,11 @@ function App(): React.JSX.Element {
           </>
         ) : (
           <div className="empty-state">
-            <h2>Start with a book</h2>
-            <p>Create a book or open one from the list.</p>
+            <span className="empty-glyph" aria-hidden="true">
+              <IcBook size={44} />
+            </span>
+            <h2>Begin your book</h2>
+            <p>Open a book from the list on the left, or give a new one a title and press New.</p>
           </div>
         )}
       </section>
@@ -848,10 +1206,11 @@ function App(): React.JSX.Element {
           />
           <div className="chat-actions">
             <button
+              className="primary"
               disabled={!book || claudeRunning || !chatText.trim()}
               onClick={() => void sendClaude()}
             >
-              {claudeRunning ? 'Claude is writing...' : 'Send to Claude'}
+              {claudeRunning ? 'Claude is writing…' : 'Send to Claude'}
             </button>
             <button disabled={!book || !chatText.trim()} onClick={() => void sendCodex()}>
               Second opinion (Codex)
@@ -895,6 +1254,15 @@ function App(): React.JSX.Element {
             </footer>
           </section>
         </div>
+      )}
+      {historyOpen && book && (
+        <HistoryModal
+          bookId={book.id}
+          chapters={book.chapters}
+          initialChapterId={selectedChapterId}
+          onClose={() => setHistoryOpen(false)}
+          onRestored={(chapterId) => void historyRestored(chapterId)}
+        />
       )}
       {diff && (
         <div className="modal-backdrop">

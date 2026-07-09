@@ -1,4 +1,42 @@
 import { Extension } from '@tiptap/core'
+import { Plugin, PluginKey } from '@tiptap/pm/state'
+import { Decoration, DecorationSet } from '@tiptap/pm/view'
+
+export interface FindRange {
+  from: number
+  to: number
+}
+
+/** Inline decorations for Find — highlights every match, strong style on the active one. */
+export const FindHighlight = Extension.create({
+  name: 'findHighlight',
+
+  addStorage() {
+    return { ranges: [] as FindRange[], active: -1 }
+  },
+
+  addProseMirrorPlugins() {
+    const storage = this.storage
+    return [
+      new Plugin({
+        key: new PluginKey('findHighlight'),
+        props: {
+          decorations(state) {
+            if (!storage.ranges.length) return null
+            return DecorationSet.create(
+              state.doc,
+              storage.ranges.map((r: FindRange, i: number) =>
+                Decoration.inline(r.from, r.to, {
+                  class: i === storage.active ? 'find-hit find-hit-active' : 'find-hit'
+                })
+              )
+            )
+          }
+        }
+      })
+    ]
+  }
+})
 
 const BLOCKS = ['paragraph', 'heading', 'blockquote']
 
