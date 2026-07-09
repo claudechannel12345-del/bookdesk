@@ -71,7 +71,9 @@ function describeTool(name: string, input: Record<string, unknown>): string {
 
 const APPEND_SYSTEM_PROMPT =
   'You are a co-author/editor inside a book-writing app. The book is the markdown files in chapters/. ' +
-  "Make edits directly to those files when asked. Keep the author's voice. " +
+  'Only edit files when the author clearly asks you to change the text (rewrite, add, cut, fix, etc.). ' +
+  'For questions, opinions, critique, or brainstorming, just answer in conversation — read chapters as ' +
+  "needed, but do not edit anything. When you do edit, keep the author's voice. " +
   'Never touch book.json, .snapshots, CLAUDE.md, or .bookdesk-format.'
 
 export interface ClaudeTurnOptions {
