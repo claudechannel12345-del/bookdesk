@@ -185,6 +185,81 @@ under Deviations.)
   instructions); `electron-builder.yml` targets mac universal dmg and is
   unchanged.
 
+## Round 2 — owner click-test feedback (2026-07-09)
+
+Five fixes requested after the owner's hands-on test, plus one bug found
+along the way. All verified against the production build via the same
+Playwright `_electron` driver, with screenshots inspected.
+
+### 1-3. Sidebar clipping / editor page scroll / chat scroll — one root cause
+
+`.app-shell` was a CSS grid with `height: 100vh` but an implicit `auto` row:
+any pane whose content grew taller than the window grew the row past 100vh,
+so the chapter list, the editor page, and the chat history all clipped off
+the bottom instead of scrolling inside their sections. Fix:
+`grid-template-rows: minmax(0, 1fr)` + `min-height: 0` on the three panes
+(`src/renderer/src/assets/main.css`). Also raised `.editor-wrap` bottom
+padding to `40vh` for the Google-Docs "always room under the caret" feel,
+and added chat auto-scroll (sticks to newest message, but stays put if the
+user has scrolled up to read history — `messagesRef`/`stickToBottomRef` in
+`App.tsx`).
+
+Observed with a 15-chapter book and an 80-paragraph chapter:
+- Chapter list scrolls inside its own section (`scrollHeight > clientHeight`),
+  Writing Rules button fully visible, zero overflow on `.app-shell`/body.
+- `.editor-wrap` scrolls; typing at the document end keeps the caret
+  ~70px above the container bottom (caret rect 662px vs wrap bottom 732px).
+- Chat history overflows inside `.messages` with the input pinned at the
+  bottom; after a long streamed answer the view was auto-scrolled to the
+  newest message; after scrolling to top and sending another turn, the view
+  stayed near the top (scrollTop 100) instead of yanking down.
+
+### 4. Conversation mode
+
+`--append-system-prompt` in `src/main/lib/claudeCli.ts` previously told
+Claude to "make edits directly when asked" with no discussion path. Now:
+edit only when the author clearly asks for a change; questions/critique/
+brainstorming get a chat answer (reading chapters is fine, editing is not).
+
+Real turn (model `sonnet`): "What do you think of Chapter 2's pacing?" →
+Claude read the chapter and streamed a genuine critique; every chapter
+file byte-identical before/after (checked on disk), zero review entries,
+no tool-edit chips. Ran twice (two app sessions) — same result both times.
+
+### 5. Check for Updates
+
+New `src/main/updateCheck.ts` + "Check for Updates…" in the File menu +
+a launch check delayed 3s (non-blocking). Notify-and-open-browser only —
+no electron-updater, no signing dependence. Compares the version baked in
+from package.json at build time (`__APP_VERSION__` via electron.vite
+`define` — `app.getVersion()` is wrong when unpackaged, it returns
+Electron's own version) against the latest GitHub Release of `UPDATE_REPO`
+(constant in updateCheck.ts, empty until a repo exists; a
+`BOOKDESK_UPDATE_REPO` env var overrides it for testing).
+
+Observed (dialogs and `shell.openExternal` mocked at the module level):
+- Repo unset: launch check produced zero dialogs over 5.5s (fully silent);
+  manual menu click showed "Update checks are not configured for this build."
+- Repo pointed at microsoft/vscode (release 1.128.0 > 0.1.0): launch check
+  showed exactly one dialog — "Version 1.128.0 available / You have 0.1.0"
+  with [Download, Later]; pressing Download called `shell.openExternal`
+  with https://github.com/microsoft/vscode/releases/tag/1.128.0.
+- Errors (404 repo, offline) are swallowed silently on launch, reported in
+  a dialog only for the manual menu check.
+
+### Bonus bug found while testing: Add/Rename chapter were dead
+
+`window.prompt()` throws in Electron ("prompt() is not supported"), so the
+sidebar's Add and Rename buttons crashed silently. Add now creates
+"Chapter N" immediately (rename after, Docs-style); Rename opens a small
+modal with an input (Enter or Save commits). Verified: Add went 14 → 15
+chapters, Rename via modal set "Epilogue: The Long Road" in the sidebar.
+
+Round-2 checks: 14/14 passed across the two runs (3 first-run failures were
+1 test-script artifact — my own typed text autosaving between snapshot and
+send — and the 2 update-checker asserts, which exposed the real
+`app.getVersion()` bug fixed above).
+
 ## What's genuinely stubbed / out of scope (by design, not oversight)
 
 - Chapters Claude creates but never registers in `book.json` aren't picked
