@@ -1,0 +1,71 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7f4ee"/>
+      <stop offset="1" stop-color="#e7e0d0"/>
+    </linearGradient>
+    <linearGradient id="pageL" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#eee9dd"/>
+      <stop offset="1" stop-color="#fffdf8"/>
+    </linearGradient>
+    <linearGradient id="pageR" x1="1" y1="0" x2="0" y2="0">
+      <stop offset="0" stop-color="#eee9dd"/>
+      <stop offset="1" stop-color="#fffdf8"/>
+    </linearGradient>
+    <linearGradient id="ribbon" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a6da0"/>
+      <stop offset="1" stop-color="#33517c"/>
+    </linearGradient>
+    <filter id="soft" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="14" stdDeviation="18" flood-color="#26231d" flood-opacity="0.22"/>
+    </filter>
+    <filter id="tiny" x="-60%" y="-60%" width="220%" height="220%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#26231d" flood-opacity="0.20"/>
+    </filter>
+  </defs>
+
+  <!-- backdrop: rounded-square "desk" -->
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="url(#bg)"/>
+  <rect x="0" y="0" width="1024" height="1024" rx="224" ry="224" fill="none" stroke="#26231d" stroke-opacity="0.05" stroke-width="2"/>
+
+  <!-- open book, single silhouette, ink-blue spine, cream pages -->
+  <g filter="url(#soft)">
+    <!-- left page -->
+    <path d="M 512 372
+             C 430 336, 300 322, 200 344
+             C 182 348, 172 360, 172 380
+             L 172 700
+             C 172 718, 184 730, 202 728
+             C 300 716, 424 726, 512 764
+             Z"
+          fill="url(#pageL)" stroke="#c9c0ac" stroke-width="3"/>
+    <!-- right page (mirror) -->
+    <path d="M 512 372
+             C 594 336, 724 322, 824 344
+             C 842 348, 852 360, 852 380
+             L 852 700
+             C 852 718, 840 730, 822 728
+             C 724 716, 600 726, 512 764
+             Z"
+          fill="url(#pageR)" stroke="#c9c0ac" stroke-width="3"/>
+  </g>
+
+  <!-- page-edge lines (few, not text) -->
+  <g stroke="#d8d0bd" stroke-width="6" stroke-linecap="round">
+    <path d="M 232 392 C 320 372, 420 380, 492 404" fill="none"/>
+    <path d="M 232 446 C 320 426, 420 434, 492 458" fill="none"/>
+    <path d="M 232 500 C 320 480, 420 488, 492 512" fill="none"/>
+    <path d="M 792 392 C 704 372, 604 380, 532 404" fill="none"/>
+    <path d="M 792 446 C 704 426, 604 434, 532 458" fill="none"/>
+    <path d="M 792 500 C 704 480, 604 488, 532 512" fill="none"/>
+  </g>
+
+  <!-- spine crease shadow -->
+  <path d="M 512 372 C 500 460, 500 640, 512 764 C 524 640, 524 460, 512 372 Z"
+        fill="#26231d" opacity="0.10"/>
+  <line x1="512" y1="374" x2="512" y2="762" stroke="#3f5e8c" stroke-width="7" stroke-linecap="round" opacity="0.85"/>
+
+  <!-- bookmark ribbon, the ink-blue accent shape -->
+  <path d="M 464 176 L 590 176 L 590 452 L 527 404 L 464 452 Z"
+        fill="url(#ribbon)" filter="url(#tiny)"/>
+</svg>
