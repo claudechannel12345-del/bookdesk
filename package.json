@@ -1,6 +1,6 @@
 {
   "name": "book-editor",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "BookDesk — a word processor with Claude as co-author",
   "main": "./out/main/index.js",
   "author": "Caden",
